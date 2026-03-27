@@ -95,6 +95,18 @@ function Header() {
               <span className={`hidden lg:inline text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {formatTime(lastUpdated)}
               </span>
+              <TickerAutocomplete
+                value={headerSearch}
+                onChange={setHeaderSearch}
+                onSelect={(symbol) => { setHeaderSearch(''); navigate(`/ticker/${symbol}`); }}
+                onEnter={(val) => { if (val.trim()) { setHeaderSearch(''); navigate(`/ticker/${val.trim()}`); } }}
+                placeholder="Go to ticker..."
+                inputClassName={`w-36 px-3 py-1.5 rounded-md border text-xs font-mono ${
+                  dark
+                    ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500'
+                    : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'
+                } focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
+              />
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
