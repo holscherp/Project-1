@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import TickerChip from '../components/TickerChip.jsx';
+import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 
@@ -55,12 +56,13 @@ export default function FilingsView() {
       {/* Filters */}
       <div className={`rounded-lg border p-4 mb-6 ${dark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="flex gap-3 items-center">
-          <input
-            type="text"
-            placeholder="Filter by ticker..."
+          <TickerAutocomplete
             value={tickerFilter}
-            onChange={e => { setTickerFilter(e.target.value.toUpperCase()); setPage(1); }}
-            className={`w-36 px-3 py-2 rounded-md border text-sm ${
+            onChange={val => { setTickerFilter(val); setPage(1); }}
+            onSelect={(symbol) => { setTickerFilter(symbol); setPage(1); }}
+            placeholder="Filter by ticker..."
+            className="w-40"
+            inputClassName={`w-full px-3 py-2 rounded-md border text-sm ${
               dark
                 ? 'bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500'
                 : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400'

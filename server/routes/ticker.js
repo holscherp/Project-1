@@ -13,6 +13,42 @@ try {
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
+// GET /search?q= - Autocomplete ticker search (must be before /:symbol)
+router.get('/search', async (req, res) => {
+  const q = (req.query.q || '').trim().toUpperCase();
+  if (!q) return res.json({ results: [] });
+
+  // 1. Query local DB first (instant)
+  const local = db.prepare(
+    `SELECT symbol, name, sector AS type FROM tickers
+     WHERE symbol LIKE ? OR name LIKE ? LIMIT 8`
+  ).all(`${q}%`, `%${q}%`);
+
+  const seen = new Set(local.map(r => r.symbol));
+  const results = [...local];
+
+  // 2. Supplement with Finnhub symbol search if needed
+  if (FINNHUB_API_KEY && results.length < 8) {
+    try {
+      const r = await fetch(
+        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${FINNHUB_API_KEY}`
+      );
+      if (r.ok) {
+        const data = await r.json();
+        for (const item of (data.result || [])) {
+          if (!seen.has(item.symbol) && item.type === 'Common Stock') {
+            results.push({ symbol: item.symbol, name: item.description, type: item.type });
+            seen.add(item.symbol);
+            if (results.length >= 8) break;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  res.json({ results: results.slice(0, 8) });
+});
+
 // GET /:symbol - Get ticker detail with related data
 router.get('/:symbol', (req, res) => {
   try {

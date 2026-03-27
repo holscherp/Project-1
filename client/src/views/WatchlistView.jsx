@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useApi, apiPost, apiDelete } from '../hooks/useApi.js';
 import TickerChip from '../components/TickerChip.jsx';
+import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 
@@ -106,12 +107,13 @@ export default function WatchlistView() {
           Tickers ({tickers.length})
         </h2>
         <form onSubmit={handleAddTicker} className="flex gap-2 mb-4">
-          <input
-            type="text"
+          <TickerAutocomplete
             value={tickerInput}
-            onChange={e => setTickerInput(e.target.value.toUpperCase())}
+            onChange={setTickerInput}
+            onSelect={(symbol) => setTickerInput(symbol)}
             placeholder="Enter ticker symbol (e.g. AAPL)"
-            className={`flex-1 max-w-xs px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
+            className="flex-1 max-w-xs"
+            inputClassName={`w-full px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
           />
           <button type="submit" disabled={tickerAdding || !tickerInput.trim()}
             className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${btnPrimary} disabled:opacity-40`}>

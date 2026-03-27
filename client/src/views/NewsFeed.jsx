@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import TickerChip from '../components/TickerChip.jsx';
+import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 import { apiPatch } from '../hooks/useApi.js';
@@ -81,12 +82,13 @@ export default function NewsFeed() {
           onChange={e => { setFilters(f => ({ ...f, search: e.target.value })); setPage(1); }}
           className={`flex-1 min-w-[200px] px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
         />
-        <input
-          type="text"
-          placeholder="Ticker"
+        <TickerAutocomplete
           value={filters.ticker}
-          onChange={e => { setFilters(f => ({ ...f, ticker: e.target.value.toUpperCase() })); setPage(1); }}
-          className={`w-24 px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
+          onChange={val => { setFilters(f => ({ ...f, ticker: val })); setPage(1); }}
+          onSelect={(symbol) => { setFilters(f => ({ ...f, ticker: symbol })); setPage(1); }}
+          placeholder="Ticker"
+          className="w-28"
+          inputClassName={`w-full px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
         />
         <select
           value={filters.source_type}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
 import { ThemeProvider, useTheme } from './context/ThemeContext.jsx';
 import NewsFeed from './views/NewsFeed.jsx';
 import FilingsView from './views/FilingsView.jsx';
@@ -8,11 +8,14 @@ import ShlobView from './views/ShlobView.jsx';
 import SocialView from './views/SocialView.jsx';
 import WatchlistView from './views/WatchlistView.jsx';
 import TickerDetail from './views/TickerDetail.jsx';
+import TickerAutocomplete from './components/TickerAutocomplete.jsx';
 
 function Header() {
   const { theme, toggleTheme } = useTheme();
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [headerSearch, setHeaderSearch] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -76,6 +79,14 @@ function Header() {
           <span className={`hidden lg:inline text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
             {formatTime(lastUpdated)}
           </span>
+          <TickerAutocomplete
+            value={headerSearch}
+            onChange={setHeaderSearch}
+            onSelect={(symbol) => { setHeaderSearch(''); navigate(`/ticker/${symbol}`); }}
+            onEnter={(val) => { if (val.trim()) { setHeaderSearch(''); navigate(`/ticker/${val.trim()}`); } }}
+            placeholder="Go to ticker..."
+            inputClassName="w-36 px-3 py-1.5 rounded-md border text-xs font-mono"
+          />
           <button
             onClick={handleRefresh}
             disabled={refreshing}
