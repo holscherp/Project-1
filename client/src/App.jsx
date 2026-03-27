@@ -86,6 +86,7 @@ function Header() {
               <NavLink to="/social" className={navLinkClass}>Social</NavLink>
               <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
               <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+              <NavLink to="/friends" className={navLinkClass}>Friends</NavLink>
             </nav>
           )}
         </div>
@@ -143,6 +144,7 @@ function Header() {
           <NavLink to="/social" className={navLinkClass}>Social</NavLink>
           <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
           <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+          <NavLink to="/friends" className={navLinkClass}>Friends</NavLink>
         </nav>
       )}
     </header>
