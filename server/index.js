@@ -25,6 +25,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust Render's reverse proxy so secure cookies and req.protocol work correctly
+app.set('trust proxy', 1);
+
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173',
   credentials: true,
@@ -43,7 +46,7 @@ app.use(session({
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: 'lax', // 'lax' required for OAuth redirects from Google
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   },
 }));

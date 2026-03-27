@@ -80,7 +80,10 @@ router.get('/google/callback', (req, res, next) => {
   if (!oauthConfigured) return res.redirect('/login?error=oauth_not_configured');
   passport.authenticate('google', { failureRedirect: '/login?error=oauth_failed' })(req, res, next);
 }, (req, res) => {
-  res.redirect('/');
+  // Explicitly save session before redirecting to ensure cookie is set
+  req.session.save(() => {
+    res.redirect('/');
+  });
 });
 
 // GET /api/auth/me — current user
