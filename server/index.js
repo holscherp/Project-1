@@ -11,6 +11,8 @@ import chatRoutes from './routes/chat.js';
 import watchlistRoutes from './routes/watchlist.js';
 import settingsRoutes from './routes/settings.js';
 import jobRoutes from './routes/jobs.js';
+import shlobRoutes from './routes/shlob.js';
+import socialRoutes from './routes/social.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +40,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/shlob', shlobRoutes);
+app.use('/api/social', socialRoutes);
 
 // SPA fallback: serve index.html for non-API routes in production
 if (process.env.NODE_ENV === 'production') {

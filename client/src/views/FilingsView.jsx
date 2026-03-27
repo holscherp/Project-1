@@ -35,10 +35,7 @@ export default function FilingsView() {
 
   useEffect(() => { fetchFilings(); }, [fetchFilings]);
 
-  const cardBg = theme === 'dark' ? 'bg-navy-800 border-navy-700' : 'bg-white border-navy-200 shadow-sm';
-  const inputBg = theme === 'dark' ? 'bg-navy-700 border-navy-600 text-navy-200' : 'bg-navy-50 border-navy-200 text-navy-800';
-  const textSecondary = theme === 'dark' ? 'text-navy-400' : 'text-navy-500';
-  const textMuted = theme === 'dark' ? 'text-navy-500' : 'text-navy-400';
+  const dark = theme === 'dark';
   const totalPages = Math.ceil(total / 50);
 
   const formatDate = (iso) => {
@@ -48,27 +45,35 @@ export default function FilingsView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className={`text-lg font-mono font-bold ${theme === 'dark' ? 'text-navy-100' : 'text-navy-900'}`}>
-          SEC Filings Tracker
+      <div className="flex items-center justify-between mb-6">
+        <h1 className={`text-xs font-bold uppercase tracking-widest ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+          SEC Filings
         </h1>
-        <span className={`text-xs font-mono ${textMuted}`}>{total} filings</span>
+        <span className={`text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{total} filings</span>
       </div>
 
       {/* Filters */}
-      <div className={`rounded-lg border p-3 mb-4 ${cardBg}`}>
+      <div className={`rounded-lg border p-4 mb-6 ${dark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="flex gap-3 items-center">
           <input
             type="text"
             placeholder="Filter by ticker..."
             value={tickerFilter}
             onChange={e => { setTickerFilter(e.target.value.toUpperCase()); setPage(1); }}
-            className={`w-32 px-3 py-1.5 rounded border text-sm font-mono ${inputBg} placeholder:text-navy-500 focus:outline-none focus:ring-1 focus:ring-accent-blue`}
+            className={`w-36 px-3 py-2 rounded-md border text-sm ${
+              dark
+                ? 'bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500'
+                : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400'
+            } focus:outline-none focus:ring-1 focus:ring-slate-400`}
           />
           <select
             value={typeFilter}
             onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
-            className={`px-3 py-1.5 rounded border text-sm ${inputBg} focus:outline-none focus:ring-1 focus:ring-accent-blue`}
+            className={`px-3 py-2 rounded-md border text-sm ${
+              dark
+                ? 'bg-slate-800 border-slate-600 text-slate-200'
+                : 'bg-slate-50 border-slate-200 text-slate-800'
+            } focus:outline-none focus:ring-1 focus:ring-slate-400`}
           >
             <option value="">All types</option>
             <option value="8-K">8-K (Material Events)</option>
@@ -83,29 +88,29 @@ export default function FilingsView() {
       ) : error ? (
         <ErrorMessage message={error} onRetry={fetchFilings} />
       ) : filings.length === 0 ? (
-        <div className="text-center py-12">
-          <p className={`text-sm ${textSecondary}`}>No SEC filings recorded yet.</p>
-          <p className={`text-xs font-mono mt-2 ${textMuted}`}>Filings will be fetched during the next hourly update cycle.</p>
+        <div className="text-center py-16">
+          <p className={`text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}>No SEC filings recorded yet.</p>
+          <p className={`text-xs mt-2 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Filings will be fetched during the next hourly update cycle.</p>
         </div>
       ) : (
-        <div className={`rounded-lg border overflow-hidden ${cardBg}`}>
+        <div className={`rounded-lg border overflow-hidden ${dark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'}`}>
           <table className="w-full">
             <thead>
-              <tr className={theme === 'dark' ? 'bg-navy-700/50' : 'bg-navy-50'}>
-                <th className={`px-4 py-2 text-left text-xs font-mono uppercase tracking-wider ${textMuted}`}>Type</th>
-                <th className={`px-4 py-2 text-left text-xs font-mono uppercase tracking-wider ${textMuted}`}>Ticker</th>
-                <th className={`px-4 py-2 text-left text-xs font-mono uppercase tracking-wider ${textMuted}`}>Title</th>
-                <th className={`px-4 py-2 text-left text-xs font-mono uppercase tracking-wider ${textMuted}`}>Filed</th>
+              <tr className={dark ? 'bg-slate-800' : 'bg-slate-50'}>
+                <th className={`px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Type</th>
+                <th className={`px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Ticker</th>
+                <th className={`px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Title</th>
+                <th className={`px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Filed</th>
               </tr>
             </thead>
             <tbody>
               {filings.map(filing => (
-                <tr key={filing.id} className={`border-t ${theme === 'dark' ? 'border-navy-700 hover:bg-navy-700/30' : 'border-navy-100 hover:bg-navy-50'}`}>
+                <tr key={filing.id} className={`border-t ${dark ? 'border-slate-700 hover:bg-slate-800/80' : 'border-slate-100 hover:bg-slate-50'}`}>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
                       filing.is_material
-                        ? 'bg-accent-red/20 text-accent-red border border-accent-red/30'
-                        : theme === 'dark' ? 'bg-navy-700 text-navy-300' : 'bg-navy-100 text-navy-600'
+                        ? 'bg-red-50 text-red-600 border border-red-200'
+                        : dark ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'
                     }`}>
                       {filing.filing_type}
                       {filing.is_material ? ' !' : ''}
@@ -116,14 +121,14 @@ export default function FilingsView() {
                   </td>
                   <td className="px-4 py-3">
                     <a href={filing.url} target="_blank" rel="noopener noreferrer"
-                      className={`text-sm hover:text-accent-blue transition-colors ${theme === 'dark' ? 'text-navy-200' : 'text-navy-800'}`}>
+                      className={`text-sm hover:underline ${dark ? 'text-slate-200' : 'text-slate-800'}`}>
                       {filing.title}
                     </a>
                     {filing.description && (
-                      <p className={`text-xs mt-0.5 ${textMuted}`}>{filing.description}</p>
+                      <p className={`text-xs mt-1 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{filing.description}</p>
                     )}
                   </td>
-                  <td className={`px-4 py-3 text-xs font-mono whitespace-nowrap ${textMuted}`}>
+                  <td className={`px-4 py-3 text-xs whitespace-nowrap ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {formatDate(filing.filed_at)}
                   </td>
                 </tr>
@@ -134,12 +139,16 @@ export default function FilingsView() {
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-6">
+        <div className="flex items-center justify-center gap-3 mt-8">
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-            className={`px-3 py-1 text-xs font-mono rounded border ${inputBg} disabled:opacity-30`}>Prev</button>
-          <span className={`text-xs font-mono ${textMuted}`}>{page} / {totalPages}</span>
+            className={`px-3 py-1.5 text-xs font-medium rounded-md border ${
+              dark ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500'
+            } disabled:opacity-30 hover:border-slate-400 transition-colors`}>Prev</button>
+          <span className={`text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{page} / {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-            className={`px-3 py-1 text-xs font-mono rounded border ${inputBg} disabled:opacity-30`}>Next</button>
+            className={`px-3 py-1.5 text-xs font-medium rounded-md border ${
+              dark ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500'
+            } disabled:opacity-30 hover:border-slate-400 transition-colors`}>Next</button>
         </div>
       )}
     </div>

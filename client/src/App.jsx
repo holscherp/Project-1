@@ -4,7 +4,8 @@ import { ThemeProvider, useTheme } from './context/ThemeContext.jsx';
 import NewsFeed from './views/NewsFeed.jsx';
 import FilingsView from './views/FilingsView.jsx';
 import EarningsView from './views/EarningsView.jsx';
-import ChatView from './views/ChatView.jsx';
+import ShlobView from './views/ShlobView.jsx';
+import SocialView from './views/SocialView.jsx';
 import WatchlistView from './views/WatchlistView.jsx';
 import TickerDetail from './views/TickerDetail.jsx';
 
@@ -40,55 +41,59 @@ function Header() {
     return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  const dark = theme === 'dark';
+
   const navLinkClass = ({ isActive }) =>
-    `px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+    `px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-all ${
       isActive
-        ? 'bg-accent-blue text-white'
-        : theme === 'dark'
-          ? 'text-navy-400 hover:text-navy-200 hover:bg-navy-700'
-          : 'text-navy-600 hover:text-navy-900 hover:bg-navy-100'
+        ? dark
+          ? 'bg-slate-800 text-white'
+          : 'bg-slate-900 text-white'
+        : dark
+          ? 'text-slate-400 hover:text-white'
+          : 'text-slate-500 hover:text-slate-900'
     }`;
 
   return (
-    <header className={`sticky top-0 z-50 border-b backdrop-blur-sm ${
-      theme === 'dark' ? 'bg-navy-900/95 border-navy-700' : 'bg-white/95 border-navy-200'
-    }`}>
-      <div className="max-w-[1600px] mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <NavLink to="/" className="font-mono font-bold text-lg tracking-wider text-accent-green">
-            MERIDIAN
+    <header className={`sticky top-0 z-50 border-b ${
+      dark ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'
+    } backdrop-blur-sm`}>
+      <div className="max-w-[1440px] mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="flex items-center gap-8">
+          <NavLink to="/" className={`font-sans font-bold text-base tracking-tight ${dark ? 'text-white' : 'text-slate-900'}`}>
+            Meridian
           </NavLink>
           <nav className="hidden md:flex items-center gap-1">
             <NavLink to="/" end className={navLinkClass}>News</NavLink>
             <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
             <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-            <NavLink to="/chat" className={navLinkClass}>Chat</NavLink>
+            <NavLink to="/social" className={navLinkClass}>Social</NavLink>
+            <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
             <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
           </nav>
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`hidden lg:inline text-xs font-mono ${theme === 'dark' ? 'text-navy-500' : 'text-navy-400'}`}>
-            Updated: {formatTime(lastUpdated)}
+        <div className="flex items-center gap-4">
+          <span className={`hidden lg:inline text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+            {formatTime(lastUpdated)}
           </span>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors ${
-              theme === 'dark'
-                ? 'border-navy-600 text-navy-400 hover:text-accent-green hover:border-accent-green'
-                : 'border-navy-300 text-navy-500 hover:text-accent-green hover:border-accent-green'
-            } disabled:opacity-50`}
+            className={`px-3 py-1 text-xs font-medium rounded-md border transition-all ${
+              dark
+                ? 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400'
+            } disabled:opacity-40`}
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
           <button
             onClick={toggleTheme}
-            className={`p-1.5 rounded transition-colors ${
-              theme === 'dark' ? 'text-navy-400 hover:text-amber-400' : 'text-navy-500 hover:text-navy-900'
+            className={`p-1.5 rounded-md transition-colors ${
+              dark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-900'
             }`}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           >
-            {theme === 'dark' ? (
+            {dark ? (
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" /></svg>
             ) : (
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
@@ -97,11 +102,12 @@ function Header() {
         </div>
       </div>
       {/* Mobile nav */}
-      <nav className="md:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto">
+      <nav className="md:hidden flex items-center gap-1 px-6 pb-2 overflow-x-auto">
         <NavLink to="/" end className={navLinkClass}>News</NavLink>
         <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
         <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-        <NavLink to="/chat" className={navLinkClass}>Chat</NavLink>
+        <NavLink to="/social" className={navLinkClass}>Social</NavLink>
+        <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
         <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
       </nav>
     </header>
@@ -112,14 +118,15 @@ function AppContent() {
   const { theme } = useTheme();
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-navy-900' : 'bg-white'}`}>
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-900' : 'bg-[#fafafa]'}`}>
       <Header />
-      <main className="max-w-[1600px] mx-auto px-4 py-4">
+      <main className="max-w-[1440px] mx-auto px-6 py-6">
         <Routes>
           <Route path="/" element={<NewsFeed />} />
           <Route path="/filings" element={<FilingsView />} />
           <Route path="/earnings" element={<EarningsView />} />
-          <Route path="/chat" element={<ChatView />} />
+          <Route path="/social" element={<SocialView />} />
+          <Route path="/shlob" element={<ShlobView />} />
           <Route path="/watchlist" element={<WatchlistView />} />
           <Route path="/ticker/:symbol" element={<TickerDetail />} />
         </Routes>

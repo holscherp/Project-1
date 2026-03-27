@@ -9,9 +9,7 @@ export default function EarningsView() {
   const { theme } = useTheme();
   const { data, loading, error, refetch } = useApi('/api/earnings');
 
-  const cardBg = theme === 'dark' ? 'bg-navy-800 border-navy-700' : 'bg-white border-navy-200 shadow-sm';
-  const textSecondary = theme === 'dark' ? 'text-navy-400' : 'text-navy-500';
-  const textMuted = theme === 'dark' ? 'text-navy-500' : 'text-navy-400';
+  const dark = theme === 'dark';
 
   const formatDate = (iso) => {
     if (!iso) return '';
@@ -27,7 +25,6 @@ export default function EarningsView() {
     return `${diff} days`;
   };
 
-  // Group by month
   const groupByMonth = (earnings) => {
     const groups = {};
     for (const e of earnings) {
@@ -48,48 +45,52 @@ export default function EarningsView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className={`text-lg font-mono font-bold ${theme === 'dark' ? 'text-navy-100' : 'text-navy-900'}`}>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className={`text-xs font-bold uppercase tracking-widest ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
           Earnings Calendar
         </h1>
-        <span className={`text-xs font-mono ${textMuted}`}>{earnings.length} upcoming</span>
+        <span className={`text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{earnings.length} upcoming</span>
       </div>
 
       {earnings.length === 0 ? (
-        <div className="text-center py-12">
-          <p className={`text-sm ${textSecondary}`}>No upcoming earnings dates recorded yet.</p>
-          <p className={`text-xs font-mono mt-2 ${textMuted}`}>Earnings data will be populated during the next fetch cycle.</p>
+        <div className="text-center py-16">
+          <p className={`text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`}>No upcoming earnings dates recorded yet.</p>
+          <p className={`text-xs mt-2 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Earnings data will be populated during the next fetch cycle.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {groups.map(group => (
             <div key={group.label}>
-              <h2 className={`text-sm font-mono font-semibold uppercase tracking-wider mb-3 ${textSecondary}`}>
+              <h2 className={`text-[10px] font-bold uppercase tracking-widest mb-4 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                 {group.label}
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {group.items.map(e => (
-                  <div key={`${e.ticker}-${e.earnings_date}`} className={`rounded-lg border p-4 ${cardBg}`}>
-                    <div className="flex items-center justify-between mb-2">
+                  <div key={`${e.ticker}-${e.earnings_date}`} className={`rounded-lg border p-5 ${
+                    dark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
                       <TickerChip symbol={e.ticker} />
-                      <span className={`text-xs font-mono px-2 py-0.5 rounded ${
-                        daysUntil(e.earnings_date) === 'Today' ? 'bg-accent-green/20 text-accent-green' :
-                        daysUntil(e.earnings_date) === 'Tomorrow' ? 'bg-accent-amber/20 text-accent-amber' :
-                        theme === 'dark' ? 'bg-navy-700 text-navy-400' : 'bg-navy-100 text-navy-500'
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${
+                        daysUntil(e.earnings_date) === 'Today'
+                          ? 'bg-green-50 text-green-600 border border-green-200'
+                          : daysUntil(e.earnings_date) === 'Tomorrow'
+                            ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                            : dark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'
                       }`}>
                         {daysUntil(e.earnings_date)}
                       </span>
                     </div>
-                    <div className={`text-sm font-mono ${theme === 'dark' ? 'text-navy-200' : 'text-navy-800'}`}>
+                    <div className={`text-sm ${dark ? 'text-slate-200' : 'text-slate-800'}`}>
                       {formatDate(e.earnings_date)}
                     </div>
                     {e.estimate_eps !== null && e.estimate_eps !== undefined && (
-                      <div className={`text-xs font-mono mt-1 ${textMuted}`}>
-                        EPS Est: <span className="text-accent-green">${e.estimate_eps}</span>
+                      <div className={`text-xs mt-2 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        EPS Est: <span className="text-green-600 font-medium">${e.estimate_eps}</span>
                       </div>
                     )}
                     {e.fiscal_quarter && (
-                      <div className={`text-xs mt-1 ${textMuted}`}>{e.fiscal_quarter}</div>
+                      <div className={`text-xs mt-1 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{e.fiscal_quarter}</div>
                     )}
                   </div>
                 ))}

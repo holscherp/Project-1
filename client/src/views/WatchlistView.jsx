@@ -5,88 +5,84 @@ import TickerChip from '../components/TickerChip.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 
-function AddForm({ fields, onSubmit, buttonLabel }) {
+export default function WatchlistView() {
   const { theme } = useTheme();
-  const [values, setValues] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-  const inputBg = theme === 'dark' ? 'bg-navy-700 border-navy-600 text-navy-200' : 'bg-navy-50 border-navy-200 text-navy-800';
+  const dark = theme === 'dark';
+  const { data, loading, error, refetch } = useApi('/api/watchlist');
 
-  const handleSubmit = async (e) => {
+  // Ticker add form
+  const [tickerInput, setTickerInput] = useState('');
+  const [tickerAdding, setTickerAdding] = useState(false);
+
+  // Sector add form
+  const [sectorInput, setSectorInput] = useState('');
+
+  // Topic add form
+  const [topicName, setTopicName] = useState('');
+  const [topicKeywords, setTopicKeywords] = useState('');
+
+  // X account add form
+  const [xHandle, setXHandle] = useState('');
+  const [xName, setXName] = useState('');
+  const [xCategory, setXCategory] = useState('');
+
+  const cardBg = dark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200';
+  const inputCls = dark
+    ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500'
+    : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400';
+  const muted = dark ? 'text-slate-500' : 'text-slate-400';
+  const secondary = dark ? 'text-slate-400' : 'text-slate-600';
+  const heading = dark ? 'text-slate-100' : 'text-slate-900';
+  const btnPrimary = dark
+    ? 'bg-slate-700 text-white hover:bg-slate-600'
+    : 'bg-slate-900 text-white hover:bg-slate-800';
+
+  const handleAddTicker = async (e) => {
     e.preventDefault();
-    setSubmitting(true);
+    if (!tickerInput.trim()) return;
+    setTickerAdding(true);
     try {
-      await onSubmit(values);
-      setValues({});
+      await apiPost('/api/watchlist/tickers', { symbol: tickerInput.trim() });
+      setTickerInput('');
+      refetch();
     } catch (err) {
       alert(err.message);
     } finally {
-      setSubmitting(false);
+      setTickerAdding(false);
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
-      {fields.map(f => (
-        <div key={f.key} className="flex flex-col">
-          <label className={`text-xs mb-0.5 ${theme === 'dark' ? 'text-navy-400' : 'text-navy-500'}`}>{f.label}</label>
-          {f.type === 'select' ? (
-            <select
-              value={values[f.key] || ''}
-              onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
-              required={f.required}
-              className={`px-2 py-1 rounded border text-sm ${inputBg} focus:outline-none focus:ring-1 focus:ring-accent-blue`}
-            >
-              <option value="">Select...</option>
-              {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={values[f.key] || ''}
-              onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
-              placeholder={f.placeholder}
-              required={f.required}
-              className={`px-2 py-1 rounded border text-sm ${f.mono ? 'font-mono' : ''} ${inputBg} placeholder:text-navy-500 focus:outline-none focus:ring-1 focus:ring-accent-blue`}
-              style={{ width: f.width || 'auto' }}
-            />
-          )}
-        </div>
-      ))}
-      <button type="submit" disabled={submitting}
-        className="px-3 py-1 bg-accent-green text-white text-sm rounded hover:bg-emerald-600 transition-colors disabled:opacity-50">
-        {submitting ? 'Adding...' : buttonLabel || 'Add'}
-      </button>
-    </form>
-  );
-}
-
-export default function WatchlistView() {
-  const { theme } = useTheme();
-  const { data, loading, error, refetch } = useApi('/api/watchlist');
-
-  const cardBg = theme === 'dark' ? 'bg-navy-800 border-navy-700' : 'bg-white border-navy-200 shadow-sm';
-  const textSecondary = theme === 'dark' ? 'text-navy-400' : 'text-navy-500';
-  const textMuted = theme === 'dark' ? 'text-navy-500' : 'text-navy-400';
-
-  const handleDeleteTicker = async (symbol) => {
-    if (!confirm(`Remove ${symbol} from watchlist?`)) return;
-    await apiDelete(`/api/watchlist/tickers/${symbol}`);
-    refetch();
+  const handleAddSector = async (e) => {
+    e.preventDefault();
+    if (!sectorInput.trim()) return;
+    try {
+      await apiPost('/api/watchlist/sectors', { name: sectorInput.trim() });
+      setSectorInput('');
+      refetch();
+    } catch (err) { alert(err.message); }
   };
 
-  const handleDeleteSector = async (id) => {
-    await apiDelete(`/api/watchlist/sectors/${id}`);
-    refetch();
+  const handleAddTopic = async (e) => {
+    e.preventDefault();
+    if (!topicName.trim() || !topicKeywords.trim()) return;
+    try {
+      await apiPost('/api/watchlist/topics', { name: topicName.trim(), keywords: topicKeywords.trim() });
+      setTopicName('');
+      setTopicKeywords('');
+      refetch();
+    } catch (err) { alert(err.message); }
   };
 
-  const handleDeleteTopic = async (id) => {
-    await apiDelete(`/api/watchlist/topics/${id}`);
-    refetch();
-  };
-
-  const handleDeleteXAccount = async (id) => {
-    await apiDelete(`/api/watchlist/x-accounts/${id}`);
-    refetch();
+  const handleAddXAccount = async (e) => {
+    e.preventDefault();
+    if (!xHandle.trim() || !xName.trim() || !xCategory) return;
+    try {
+      await apiPost('/api/watchlist/x-accounts', { handle: xHandle.trim(), display_name: xName.trim(), category: xCategory });
+      setXHandle('');
+      setXName('');
+      setXCategory('');
+      refetch();
+    } catch (err) { alert(err.message); }
   };
 
   if (loading) return <LoadingSpinner message="Loading watchlist..." />;
@@ -94,145 +90,133 @@ export default function WatchlistView() {
 
   const { tickers = [], sectors = [], topics = [], xAccounts = [] } = data || {};
 
+  const XIcon = () => (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+
   return (
-    <div className="space-y-6">
-      <h1 className={`text-lg font-mono font-bold ${theme === 'dark' ? 'text-navy-100' : 'text-navy-900'}`}>
-        Watchlist Management
-      </h1>
+    <div className="space-y-8">
+      <h1 className={`text-sm font-bold uppercase tracking-wider ${heading}`}>Watchlist</h1>
 
       {/* Tickers */}
-      <section className={`rounded-lg border p-4 ${cardBg}`}>
-        <h2 className={`text-sm font-mono font-semibold uppercase tracking-wider mb-3 ${textSecondary}`}>
+      <section className={`rounded-lg border p-6 ${cardBg}`}>
+        <h2 className={`text-[10px] font-semibold uppercase tracking-wider mb-4 ${muted}`}>
           Tickers ({tickers.length})
         </h2>
-        <div className="mb-4">
-          <AddForm
-            fields={[
-              { key: 'symbol', label: 'Symbol', placeholder: 'AAPL', required: true, mono: true, width: '80px' },
-              { key: 'name', label: 'Company Name', placeholder: 'Apple Inc.', required: true, width: '180px' },
-              { key: 'sector', label: 'Sector', placeholder: 'Technology', width: '150px' },
-              { key: 'market_cap_category', label: 'Market Cap', type: 'select', options: ['Mega Cap', 'Large Cap', 'Mid Cap', 'Small Cap', 'Special Situation'] },
-            ]}
-            onSubmit={async (values) => {
-              await apiPost('/api/watchlist/tickers', values);
-              refetch();
-            }}
-            buttonLabel="Add Ticker"
+        <form onSubmit={handleAddTicker} className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={tickerInput}
+            onChange={e => setTickerInput(e.target.value.toUpperCase())}
+            placeholder="Enter ticker symbol (e.g. AAPL)"
+            className={`flex-1 max-w-xs px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}
           />
-          <p className={`text-xs mt-1 ${textMuted}`}>Description will be auto-generated by Claude if not provided.</p>
-        </div>
+          <button type="submit" disabled={tickerAdding || !tickerInput.trim()}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${btnPrimary} disabled:opacity-40`}>
+            {tickerAdding ? 'Adding...' : 'Add'}
+          </button>
+        </form>
+        <p className={`text-xs mb-4 ${muted}`}>
+          Just enter the ticker symbol. Company name, sector, and description will be auto-populated.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {tickers.map(t => (
-            <div key={t.symbol} className={`flex items-start gap-2 p-2 rounded ${theme === 'dark' ? 'bg-navy-700/50' : 'bg-navy-50'}`}>
+            <div key={t.symbol} className={`flex items-center gap-3 p-3 rounded-lg ${dark ? 'bg-slate-800/80' : 'bg-slate-50'}`}>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-0.5">
                   <TickerChip symbol={t.symbol} />
-                  <span className={`text-sm truncate ${theme === 'dark' ? 'text-navy-200' : 'text-navy-800'}`}>{t.name}</span>
+                  <span className={`text-sm truncate ${heading}`}>{t.name}</span>
                 </div>
-                <p className={`text-xs mt-0.5 truncate ${textMuted}`}>{t.sector} · {t.market_cap_category}</p>
+                <p className={`text-[10px] truncate ${muted}`}>{t.sector}</p>
               </div>
-              <button onClick={() => handleDeleteTicker(t.symbol)}
-                className={`shrink-0 p-1 rounded text-xs transition-colors ${textMuted} hover:text-accent-red`}
-                title="Remove">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <button onClick={() => { if (confirm(`Remove ${t.symbol}?`)) apiDelete(`/api/watchlist/tickers/${t.symbol}`).then(refetch); }}
+                className={`p-1 rounded ${muted} hover:text-accent-red transition-colors`}><XIcon /></button>
             </div>
           ))}
         </div>
       </section>
 
       {/* Sector Groups */}
-      <section className={`rounded-lg border p-4 ${cardBg}`}>
-        <h2 className={`text-sm font-mono font-semibold uppercase tracking-wider mb-3 ${textSecondary}`}>
+      <section className={`rounded-lg border p-6 ${cardBg}`}>
+        <h2 className={`text-[10px] font-semibold uppercase tracking-wider mb-4 ${muted}`}>
           Sector Groups ({sectors.length})
         </h2>
-        <div className="mb-4">
-          <AddForm
-            fields={[{ key: 'name', label: 'Sector Name', placeholder: 'e.g. Nuclear energy', required: true, width: '250px' }]}
-            onSubmit={async (values) => {
-              await apiPost('/api/watchlist/sectors', values);
-              refetch();
-            }}
-            buttonLabel="Add Sector"
-          />
-        </div>
+        <form onSubmit={handleAddSector} className="flex gap-2 mb-4">
+          <input type="text" value={sectorInput} onChange={e => setSectorInput(e.target.value)}
+            placeholder="e.g. Nuclear energy" className={`flex-1 max-w-sm px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`} />
+          <button type="submit" className={`px-4 py-2 text-xs font-semibold rounded-lg ${btnPrimary}`}>Add</button>
+        </form>
         <div className="flex flex-wrap gap-2">
           {sectors.map(s => (
-            <span key={s.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-sm ${theme === 'dark' ? 'bg-navy-700 text-navy-300' : 'bg-navy-100 text-navy-700'}`}>
+            <span key={s.id} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${dark ? 'bg-slate-800/80 text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
               {s.name}
-              <button onClick={() => handleDeleteSector(s.id)} className={`${textMuted} hover:text-accent-red`}>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <button onClick={() => apiDelete(`/api/watchlist/sectors/${s.id}`).then(refetch)}
+                className={`${muted} hover:text-accent-red`}><XIcon /></button>
             </span>
           ))}
         </div>
       </section>
 
       {/* Macro Topics */}
-      <section className={`rounded-lg border p-4 ${cardBg}`}>
-        <h2 className={`text-sm font-mono font-semibold uppercase tracking-wider mb-3 ${textSecondary}`}>
+      <section className={`rounded-lg border p-6 ${cardBg}`}>
+        <h2 className={`text-[10px] font-semibold uppercase tracking-wider mb-4 ${muted}`}>
           Macro Topics ({topics.length})
         </h2>
-        <div className="mb-4">
-          <AddForm
-            fields={[
-              { key: 'name', label: 'Topic Name', placeholder: 'e.g. Nuclear energy policy', required: true, width: '200px' },
-              { key: 'keywords', label: 'Keywords (comma-separated)', placeholder: 'nuclear, uranium, SMR', required: true, width: '300px' },
-            ]}
-            onSubmit={async (values) => {
-              await apiPost('/api/watchlist/topics', values);
-              refetch();
-            }}
-            buttonLabel="Add Topic"
-          />
-        </div>
-        <div className="space-y-2">
+        <form onSubmit={handleAddTopic} className="flex flex-wrap gap-2 mb-4">
+          <input type="text" value={topicName} onChange={e => setTopicName(e.target.value)}
+            placeholder="Topic name" className={`w-48 px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`} />
+          <input type="text" value={topicKeywords} onChange={e => setTopicKeywords(e.target.value)}
+            placeholder="Keywords (comma-separated)" className={`flex-1 min-w-[200px] px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`} />
+          <button type="submit" className={`px-4 py-2 text-xs font-semibold rounded-lg ${btnPrimary}`}>Add</button>
+        </form>
+        <div className="space-y-1.5">
           {topics.map(t => (
-            <div key={t.id} className={`flex items-center justify-between p-2 rounded ${theme === 'dark' ? 'bg-navy-700/50' : 'bg-navy-50'}`}>
+            <div key={t.id} className={`flex items-center justify-between p-3 rounded-lg ${dark ? 'bg-slate-800/80' : 'bg-slate-50'}`}>
               <div>
-                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-navy-200' : 'text-navy-800'}`}>{t.name}</span>
-                <span className={`text-xs ml-2 ${textMuted}`}>{t.keywords}</span>
+                <span className={`text-sm font-medium ${heading}`}>{t.name}</span>
+                <span className={`text-xs ml-3 ${muted}`}>{t.keywords}</span>
               </div>
-              <button onClick={() => handleDeleteTopic(t.id)} className={`p-1 ${textMuted} hover:text-accent-red`}>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <button onClick={() => apiDelete(`/api/watchlist/topics/${t.id}`).then(refetch)}
+                className={`p-1 ${muted} hover:text-accent-red`}><XIcon /></button>
             </div>
           ))}
         </div>
       </section>
 
       {/* X Accounts */}
-      <section className={`rounded-lg border p-4 ${cardBg}`}>
-        <h2 className={`text-sm font-mono font-semibold uppercase tracking-wider mb-3 ${textSecondary}`}>
+      <section className={`rounded-lg border p-6 ${cardBg}`}>
+        <h2 className={`text-[10px] font-semibold uppercase tracking-wider mb-4 ${muted}`}>
           X/Twitter Accounts ({xAccounts.length})
         </h2>
-        <div className="mb-4">
-          <AddForm
-            fields={[
-              { key: 'handle', label: 'Handle', placeholder: '@handle', required: true, mono: true, width: '150px' },
-              { key: 'display_name', label: 'Display Name', placeholder: 'Full Name', required: true, width: '150px' },
-              { key: 'category', label: 'Category', type: 'select', required: true, options: ['Activist Investors', 'Macro Analysts', 'Official/Institutional', 'Financial Journalists', 'Commodities', 'Sector-Specific'] },
-            ]}
-            onSubmit={async (values) => {
-              await apiPost('/api/watchlist/x-accounts', values);
-              refetch();
-            }}
-            buttonLabel="Add Account"
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <form onSubmit={handleAddXAccount} className="flex flex-wrap gap-2 mb-4">
+          <input type="text" value={xHandle} onChange={e => setXHandle(e.target.value)}
+            placeholder="@handle" className={`w-36 px-3 py-2 rounded-lg border text-sm font-mono ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`} />
+          <input type="text" value={xName} onChange={e => setXName(e.target.value)}
+            placeholder="Display name" className={`w-40 px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`} />
+          <select value={xCategory} onChange={e => setXCategory(e.target.value)}
+            className={`px-3 py-2 rounded-lg border text-sm ${inputCls} focus:outline-none focus:ring-2 focus:ring-slate-400/30`}>
+            <option value="">Category...</option>
+            <option>Activist Investors</option>
+            <option>Macro Analysts</option>
+            <option>Official/Institutional</option>
+            <option>Financial Journalists</option>
+            <option>Commodities</option>
+            <option>Sector-Specific</option>
+          </select>
+          <button type="submit" className={`px-4 py-2 text-xs font-semibold rounded-lg ${btnPrimary}`}>Add</button>
+        </form>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
           {xAccounts.map(a => (
-            <div key={a.id} className={`flex items-center justify-between p-2 rounded ${theme === 'dark' ? 'bg-navy-700/50' : 'bg-navy-50'}`}>
-              <div>
-                <span className={`text-sm font-mono ${theme === 'dark' ? 'text-navy-200' : 'text-navy-800'}`}>@{a.handle}</span>
-                <span className={`text-sm ml-2 ${textSecondary}`}>{a.display_name}</span>
-                <span className={`text-xs ml-2 px-1.5 py-0.5 rounded ${theme === 'dark' ? 'bg-navy-700 text-navy-400' : 'bg-navy-100 text-navy-500'}`}>
-                  {a.category}
-                </span>
+            <div key={a.id} className={`flex items-center justify-between p-3 rounded-lg ${dark ? 'bg-slate-800/80' : 'bg-slate-50'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-mono ${heading}`}>@{a.handle}</span>
+                <span className={`text-xs ${secondary}`}>{a.display_name}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${dark ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{a.category}</span>
               </div>
-              <button onClick={() => handleDeleteXAccount(a.id)} className={`p-1 ${textMuted} hover:text-accent-red`}>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <button onClick={() => apiDelete(`/api/watchlist/x-accounts/${a.id}`).then(refetch)}
+                className={`p-1 ${muted} hover:text-accent-red`}><XIcon /></button>
             </div>
           ))}
         </div>

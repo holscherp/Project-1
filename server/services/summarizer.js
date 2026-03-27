@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
-const SYSTEM_PROMPT = `You are a senior macro research analyst at a multi-strategy hedge fund. Summarize this article in 3-5 sentences. Be specific about numbers, dates, and implications. Identify which tickers from the user's watchlist are relevant. Tone: institutional, direct, no filler. Do not start with "Here is a summary" or use bullet points. Write in flowing prose.`;
+const SYSTEM_PROMPT = `You are a senior macro research analyst at a multi-strategy hedge fund. Summarize this article in ONE single concise sentence. Be specific about the key data point or implication. Identify which tickers from the user's watchlist are relevant. Tone: institutional, direct, no filler. Do not start with "This article" — lead with the insight.`;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import db from '../db.js';
 
 const router = Router();
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
 let anthropic;
 try {
@@ -26,13 +27,13 @@ router.get('/', (req, res) => {
   }
 });
 
-// POST /tickers - Add a ticker
+// POST /tickers - Add a ticker (only symbol required; rest auto-fetched)
 router.post('/tickers', async (req, res) => {
   try {
-    const { symbol, name, description, sector, market_cap_category, themes } = req.body;
+    let { symbol, name, description, sector, market_cap_category, themes } = req.body;
 
-    if (!symbol || !name) {
-      return res.status(400).json({ error: 'Symbol and name are required' });
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
     }
 
     const upperSymbol = symbol.toUpperCase();
@@ -42,6 +43,44 @@ router.post('/tickers', async (req, res) => {
       return res.status(409).json({ error: 'Ticker already exists' });
     }
 
+    // Auto-fetch company profile from Finnhub if name not provided
+    if (!name && FINNHUB_API_KEY) {
+      try {
+        const profileRes = await fetch(
+          `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(upperSymbol)}&token=${FINNHUB_API_KEY}`
+        );
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          if (profile.name) name = profile.name;
+          if (!sector && profile.finnhubIndustry) sector = profile.finnhubIndustry;
+          if (!market_cap_category && profile.marketCapitalization) {
+            const mcap = profile.marketCapitalization; // in millions
+            if (mcap >= 200000) market_cap_category = 'Mega Cap';
+            else if (mcap >= 10000) market_cap_category = 'Large Cap';
+            else if (mcap >= 2000) market_cap_category = 'Mid Cap';
+            else market_cap_category = 'Small Cap';
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch Finnhub profile:', e.message);
+      }
+    }
+
+    // Fallback: use Claude to get company info if still missing
+    if (!name && anthropic) {
+      try {
+        const response = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 100,
+          messages: [{ role: 'user', content: `What is the company name for the stock ticker symbol ${upperSymbol}? Reply with just the company name, nothing else.` }],
+        });
+        name = response.content[0]?.text?.trim() || upperSymbol;
+      } catch { name = upperSymbol; }
+    }
+
+    if (!name) name = upperSymbol;
+
+    // Auto-generate description
     let finalDescription = description || '';
     if (!description && anthropic) {
       try {
@@ -50,12 +89,12 @@ router.post('/tickers', async (req, res) => {
           max_tokens: 200,
           messages: [{
             role: 'user',
-            content: `Write a 2-3 sentence description of the company with ticker symbol ${upperSymbol} (${name}). Focus on what the company does, its market position, and why a macro-focused investor would care. Be concise and factual.`,
+            content: `Write a 2-3 sentence description of ${name} (${upperSymbol}). Focus on what the company does, its market position, and macro relevance. Be concise and factual. No preamble.`,
           }],
         });
-        finalDescription = response.content[0].text;
+        finalDescription = response.content[0]?.text || '';
       } catch (aiErr) {
-        console.error('Failed to generate description via Claude:', aiErr.message);
+        console.error('Failed to generate description:', aiErr.message);
       }
     }
 
