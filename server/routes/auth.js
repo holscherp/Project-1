@@ -8,14 +8,18 @@ const router = Router();
 
 // ── Passport configuration ─────────────────────────────────────────────────
 
-const oauthConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim();
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET?.trim();
+const GOOGLE_CALLBACK_URL = (process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/auth/google/callback').trim();
+
+const oauthConfigured = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
 if (oauthConfigured) {
 passport.use(new GoogleStrategy(
   {
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/auth/google/callback',
+    clientID: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    callbackURL: GOOGLE_CALLBACK_URL,
   },
   (accessToken, refreshToken, profile, done) => {
     try {
