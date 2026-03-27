@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider, useTheme } from './context/ThemeContext.jsx';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import NewsFeed from './views/NewsFeed.jsx';
 import FilingsView from './views/FilingsView.jsx';
 import EarningsView from './views/EarningsView.jsx';
@@ -8,19 +9,34 @@ import ShlobView from './views/ShlobView.jsx';
 import SocialView from './views/SocialView.jsx';
 import WatchlistView from './views/WatchlistView.jsx';
 import TickerDetail from './views/TickerDetail.jsx';
+import LoginView from './views/LoginView.jsx';
+import FriendsView from './views/FriendsView.jsx';
+import CompareView from './views/CompareView.jsx';
+import UserMenu from './components/UserMenu.jsx';
 import TickerAutocomplete from './components/TickerAutocomplete.jsx';
+
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  return children;
+}
 
 function Header() {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [headerSearch, setHeaderSearch] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!user) return;
     const fetchSettings = async () => {
       try {
-        const res = await fetch('/api/settings');
+        const res = await fetch('/api/settings', { credentials: 'include' });
         const data = await res.json();
         if (data.last_updated) setLastUpdated(data.last_updated);
       } catch {}
@@ -28,12 +44,12 @@ function Header() {
     fetchSettings();
     const interval = setInterval(fetchSettings, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch('/api/settings/refresh', { method: 'POST' });
+      await fetch('/api/settings/refresh', { method: 'POST', credentials: 'include' });
     } catch {}
     setTimeout(() => setRefreshing(false), 3000);
   };
@@ -49,12 +65,8 @@ function Header() {
   const navLinkClass = ({ isActive }) =>
     `px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-all ${
       isActive
-        ? dark
-          ? 'bg-slate-800 text-white'
-          : 'bg-slate-900 text-white'
-        : dark
-          ? 'text-slate-400 hover:text-white'
-          : 'text-slate-500 hover:text-slate-900'
+        ? dark ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'
+        : dark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
     }`;
 
   return (
@@ -66,38 +78,36 @@ function Header() {
           <NavLink to="/" className={`font-sans font-bold text-base tracking-tight ${dark ? 'text-white' : 'text-slate-900'}`}>
             Meridian
           </NavLink>
-          <nav className="hidden md:flex items-center gap-1">
-            <NavLink to="/" end className={navLinkClass}>News</NavLink>
-            <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
-            <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-            <NavLink to="/social" className={navLinkClass}>Social</NavLink>
-            <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
-            <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
-          </nav>
+          {user && (
+            <nav className="hidden md:flex items-center gap-1">
+              <NavLink to="/" end className={navLinkClass}>News</NavLink>
+              <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
+              <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
+              <NavLink to="/social" className={navLinkClass}>Social</NavLink>
+              <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
+              <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+            </nav>
+          )}
         </div>
         <div className="flex items-center gap-4">
-          <span className={`hidden lg:inline text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {formatTime(lastUpdated)}
-          </span>
-          <TickerAutocomplete
-            value={headerSearch}
-            onChange={setHeaderSearch}
-            onSelect={(symbol) => { setHeaderSearch(''); navigate(`/ticker/${symbol}`); }}
-            onEnter={(val) => { if (val.trim()) { setHeaderSearch(''); navigate(`/ticker/${val.trim()}`); } }}
-            placeholder="Go to ticker..."
-            inputClassName="w-36 px-3 py-1.5 rounded-md border text-xs font-mono"
-          />
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className={`px-3 py-1 text-xs font-medium rounded-md border transition-all ${
-              dark
-                ? 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
-                : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400'
-            } disabled:opacity-40`}
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          {user && (
+            <>
+              <span className={`hidden lg:inline text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+                {formatTime(lastUpdated)}
+              </span>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className={`px-3 py-1 text-xs font-medium rounded-md border transition-all ${
+                  dark
+                    ? 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                    : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400'
+                } disabled:opacity-40`}
+              >
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </>
+          )}
           <button
             onClick={toggleTheme}
             className={`p-1.5 rounded-md transition-colors ${
@@ -110,36 +120,42 @@ function Header() {
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
             )}
           </button>
+          {user && <UserMenu />}
         </div>
       </div>
-      {/* Mobile nav */}
-      <nav className="md:hidden flex items-center gap-1 px-6 pb-2 overflow-x-auto">
-        <NavLink to="/" end className={navLinkClass}>News</NavLink>
-        <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
-        <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-        <NavLink to="/social" className={navLinkClass}>Social</NavLink>
-        <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
-        <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
-      </nav>
+      {user && (
+        <nav className="md:hidden flex items-center gap-1 px-6 pb-2 overflow-x-auto">
+          <NavLink to="/" end className={navLinkClass}>News</NavLink>
+          <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
+          <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
+          <NavLink to="/social" className={navLinkClass}>Social</NavLink>
+          <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
+          <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+        </nav>
+      )}
     </header>
   );
 }
 
 function AppContent() {
   const { theme } = useTheme();
+  const { user, loading } = useAuth();
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-slate-900' : 'bg-[#fafafa]'}`}>
       <Header />
       <main className="max-w-[1440px] mx-auto px-6 py-6">
         <Routes>
-          <Route path="/" element={<NewsFeed />} />
-          <Route path="/filings" element={<FilingsView />} />
-          <Route path="/earnings" element={<EarningsView />} />
-          <Route path="/social" element={<SocialView />} />
-          <Route path="/shlob" element={<ShlobView />} />
-          <Route path="/watchlist" element={<WatchlistView />} />
-          <Route path="/ticker/:symbol" element={<TickerDetail />} />
+          <Route path="/login" element={user && !loading ? <Navigate to="/" replace /> : <LoginView />} />
+          <Route path="/" element={<ProtectedRoute><NewsFeed /></ProtectedRoute>} />
+          <Route path="/filings" element={<ProtectedRoute><FilingsView /></ProtectedRoute>} />
+          <Route path="/earnings" element={<ProtectedRoute><EarningsView /></ProtectedRoute>} />
+          <Route path="/social" element={<ProtectedRoute><SocialView /></ProtectedRoute>} />
+          <Route path="/shlob" element={<ProtectedRoute><ShlobView /></ProtectedRoute>} />
+          <Route path="/watchlist" element={<ProtectedRoute><WatchlistView /></ProtectedRoute>} />
+          <Route path="/ticker/:symbol" element={<ProtectedRoute><TickerDetail /></ProtectedRoute>} />
+          <Route path="/friends" element={<ProtectedRoute><FriendsView /></ProtectedRoute>} />
+          <Route path="/compare/:userId" element={<ProtectedRoute><CompareView /></ProtectedRoute>} />
         </Routes>
       </main>
     </div>
@@ -149,9 +165,11 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <AppContent />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

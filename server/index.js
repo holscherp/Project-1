@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import passport from 'passport';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb } from './db.js';
+import { initDb, SqliteSessionStore } from './db.js';
 import newsRoutes from './routes/news.js';
 import tickerRoutes from './routes/ticker.js';
 import filingsRoutes from './routes/filings.js';
@@ -13,6 +15,9 @@ import settingsRoutes from './routes/settings.js';
 import jobRoutes from './routes/jobs.js';
 import shlobRoutes from './routes/shlob.js';
 import socialRoutes from './routes/social.js';
+import authRoutes from './routes/auth.js';
+import usersRoutes from './routes/users.js';
+import friendsRoutes from './routes/friends.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,11 +25,31 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
 
-// Initialize database
+// Initialize database (must run before session store is used)
 initDb();
+
+// Session middleware
+app.use(session({
+  store: new SqliteSessionStore(),
+  secret: process.env.SESSION_SECRET || 'meridian-dev-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  },
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -32,6 +57,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Mount API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/friends', friendsRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/ticker', tickerRoutes);
 app.use('/api/filings', filingsRoutes);

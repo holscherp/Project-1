@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { Store } from 'express-session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -125,6 +126,58 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      google_id TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar_url TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_watchlist_tickers (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      ticker_symbol TEXT NOT NULL REFERENCES tickers(symbol) ON DELETE CASCADE,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, ticker_symbol)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_watchlist_sectors (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sector_id INTEGER NOT NULL REFERENCES sector_groups(id) ON DELETE CASCADE,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, sector_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_watchlist_topics (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      topic_id INTEGER NOT NULL REFERENCES macro_topics(id) ON DELETE CASCADE,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, topic_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_watchlist_x_accounts (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      x_account_id INTEGER NOT NULL REFERENCES x_accounts(id) ON DELETE CASCADE,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, x_account_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS friendships (
+      id TEXT PRIMARY KEY,
+      requester_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      addressee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected')) DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      UNIQUE(requester_id, addressee_id)
     );
   `);
 
@@ -289,5 +342,52 @@ function initDb() {
   return db;
 }
 
-export { db, initDb };
+// ── SQLite-backed session store for express-session ────────────────────────
+class SqliteSessionStore extends Store {
+  constructor() {
+    super();
+    // Clean up expired sessions every 15 minutes
+    setInterval(() => {
+      db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+    }, 15 * 60 * 1000);
+  }
+
+  get(sid, callback) {
+    try {
+      const row = db.prepare('SELECT data, expires_at FROM sessions WHERE id = ?').get(sid);
+      if (!row) return callback(null, null);
+      if (row.expires_at < Date.now()) {
+        db.prepare('DELETE FROM sessions WHERE id = ?').run(sid);
+        return callback(null, null);
+      }
+      callback(null, JSON.parse(row.data));
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  set(sid, session, callback) {
+    try {
+      const maxAge = session.cookie?.maxAge || 30 * 24 * 60 * 60 * 1000;
+      const expiresAt = Date.now() + maxAge;
+      db.prepare(
+        'INSERT OR REPLACE INTO sessions (id, data, expires_at) VALUES (?, ?, ?)'
+      ).run(sid, JSON.stringify(session), expiresAt);
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  destroy(sid, callback) {
+    try {
+      db.prepare('DELETE FROM sessions WHERE id = ?').run(sid);
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+  }
+}
+
+export { db, initDb, SqliteSessionStore };
 export default db;
