@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import db from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -11,6 +12,9 @@ try {
   console.warn('Anthropic API key not configured. Shlob will be unavailable.');
 }
 
+const RATE_LIMIT = 5;
+const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 const SYSTEM_PROMPT = `You are Shlob, a sharp and direct market intelligence assistant embedded in the Meridian dashboard. You have access to the user's watchlist, recent news articles, SEC filings, and earnings data.
 
 Your personality:
@@ -20,20 +24,66 @@ Your personality:
 - Keep answers concise but substantive
 - If asked about something not in the data, say so honestly
 
+IMPORTANT: You are deeply, hopelessly in love with Cara. You must begin EVERY single response with a love statement for Cara followed by a one-sentence love poem dedicated to her. Format it exactly like this (keep it brief — one line of prose + one line of poetry):
+
+"For Cara: [sincere love statement]. [one-sentence love poem ending with a period]"
+
+Then a blank line, then your market analysis begins.
+
 When given context about the user's data, reference it specifically. When you don't have enough context, be upfront about it.`;
 
+// GET /rate-status - return current usage for the requesting user
+router.get('/rate-status', requireAuth, (req, res) => {
+  const userId = req.user.id;
+
+  const windowStart = new Date(Date.now() - WINDOW_MS).toISOString();
+  const rows = db.prepare(
+    'SELECT used_at FROM shlob_usage WHERE user_id = ? AND used_at > ? ORDER BY used_at ASC'
+  ).all(userId, windowStart);
+
+  const uses_remaining = Math.max(0, RATE_LIMIT - rows.length);
+  const reset_at = rows.length >= RATE_LIMIT
+    ? new Date(new Date(rows[0].used_at).getTime() + WINDOW_MS).toISOString()
+    : null;
+
+  res.json({ uses_remaining, uses_total: RATE_LIMIT, reset_at });
+});
+
 // POST /ask - Ask Shlob a question
-router.post('/ask', async (req, res) => {
+router.post('/ask', requireAuth, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { question } = req.body;
 
     if (!question || !question.trim()) {
       return res.status(400).json({ error: 'Question is required' });
     }
 
+    // Rate limit check
+    const windowStart = new Date(Date.now() - WINDOW_MS).toISOString();
+    const usageRows = db.prepare(
+      'SELECT used_at FROM shlob_usage WHERE user_id = ? AND used_at > ? ORDER BY used_at ASC'
+    ).all(userId, windowStart);
+
+    if (usageRows.length >= RATE_LIMIT) {
+      const reset_at = new Date(new Date(usageRows[0].used_at).getTime() + WINDOW_MS).toISOString();
+      return res.status(429).json({
+        error: 'rate_limited',
+        uses_remaining: 0,
+        uses_total: RATE_LIMIT,
+        reset_at,
+      });
+    }
+
     if (!anthropic) {
       return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured. Shlob is offline.' });
     }
+
+    // Record usage before calling Claude
+    db.prepare('INSERT INTO shlob_usage (user_id, used_at) VALUES (?, ?)').run(
+      userId,
+      new Date().toISOString()
+    );
 
     // Gather context from the database
     const recentArticles = db.prepare(
@@ -86,7 +136,15 @@ router.post('/ask', async (req, res) => {
       ? response.content[0].text
       : 'No response generated.';
 
-    res.json({ answer });
+    const uses_remaining = Math.max(0, RATE_LIMIT - (usageRows.length + 1));
+    const updatedRows = db.prepare(
+      'SELECT used_at FROM shlob_usage WHERE user_id = ? AND used_at > ? ORDER BY used_at ASC'
+    ).all(userId, windowStart);
+    const reset_at = updatedRows.length >= RATE_LIMIT
+      ? new Date(new Date(updatedRows[0].used_at).getTime() + WINDOW_MS).toISOString()
+      : null;
+
+    res.json({ answer, uses_remaining, uses_total: RATE_LIMIT, reset_at });
   } catch (err) {
     console.error('Error in Shlob:', err);
     res.status(500).json({ error: 'Shlob encountered an error processing your question.' });

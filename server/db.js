@@ -222,6 +222,14 @@ function initDb() {
       conviction INTEGER,
       fetched_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS shlob_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      used_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_shlob_usage_user ON shlob_usage(user_id, used_at);
   `);
 
   // ── Seed Data ──────────────────────────────────────────────────────────
