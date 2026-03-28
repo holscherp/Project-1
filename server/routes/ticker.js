@@ -12,6 +12,7 @@ try {
 }
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // GET /search?q= - Autocomplete ticker search (must be before /:symbol)
 router.get('/search', async (req, res) => {
@@ -49,45 +50,104 @@ router.get('/search', async (req, res) => {
   res.json({ results: results.slice(0, 8) });
 });
 
-// GET /:symbol - Get ticker detail with related data
-router.get('/:symbol', (req, res) => {
+// GET /:symbol/metrics - Financial metrics with 24h cache (must be before /:symbol)
+router.get('/:symbol/metrics', async (req, res) => {
   try {
-    const { symbol } = req.params;
-    const upperSymbol = symbol.toUpperCase();
+    const symbol = req.params.symbol.toUpperCase();
 
-    const ticker = db.prepare(
-      'SELECT * FROM tickers WHERE symbol = ?'
-    ).get(upperSymbol);
-
-    if (!ticker) {
-      return res.status(404).json({ error: 'Ticker not found' });
+    // Check cache
+    const cached = db.prepare('SELECT * FROM ticker_metrics WHERE symbol = ?').get(symbol);
+    if (cached && (Date.now() - new Date(cached.fetched_at).getTime()) < CACHE_TTL_MS) {
+      return res.json({ metrics: JSON.parse(cached.metrics_json), cached: true, fetched_at: cached.fetched_at });
     }
 
-    const articles = db.prepare(
-      `SELECT * FROM articles WHERE tickers LIKE '%"' || ? || '"%' ORDER BY published_at DESC LIMIT 20`
-    ).all(upperSymbol);
+    if (!FINNHUB_API_KEY) {
+      return res.json({ metrics: {}, cached: false, fetched_at: null });
+    }
 
-    const filings = db.prepare(
-      'SELECT * FROM filings WHERE ticker = ? ORDER BY filed_at DESC LIMIT 20'
-    ).all(upperSymbol);
+    // Fetch in parallel from Finnhub
+    const [metricRes, profileRes, quoteRes] = await Promise.all([
+      fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${FINNHUB_API_KEY}`),
+      fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`),
+      fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`),
+    ]);
 
-    const earnings = db.prepare(
-      `SELECT * FROM earnings WHERE ticker = ? AND earnings_date >= date('now') ORDER BY earnings_date ASC LIMIT 1`
-    ).get(upperSymbol);
+    const metricData = metricRes.ok ? await metricRes.json() : {};
+    const profile = profileRes.ok ? await profileRes.json() : {};
+    const quote = quoteRes.ok ? await quoteRes.json() : {};
 
-    res.json({
-      ticker,
-      articles,
-      filings,
-      earnings: earnings || null,
-    });
+    const m = metricData.metric || {};
+
+    // Helper to format market cap
+    const formatMarketCap = (mcMillions) => {
+      if (!mcMillions) return null;
+      if (mcMillions >= 1_000_000) return `$${(mcMillions / 1_000_000).toFixed(1)}T`;
+      if (mcMillions >= 1_000) return `$${(mcMillions / 1_000).toFixed(1)}B`;
+      return `$${mcMillions.toFixed(0)}M`;
+    };
+
+    // Compute net debt / EBITDA safely
+    let netDebtEbitda = null;
+    if (m.netDebtAnnual != null && m.ebitdaAnnual != null && m.ebitdaAnnual !== 0) {
+      netDebtEbitda = m.netDebtAnnual / m.ebitdaAnnual;
+    }
+
+    const metrics = {
+      // Valuation
+      peRatio: m.peTTM ?? m.peNormalizedAnnual ?? null,
+      pegRatio: m.pegNormalizedAnnual ?? null,
+      psRatio: m.psTTM ?? null,
+      pbRatio: m.pbAnnual ?? null,
+      evEbitda: m.evEbitdaTTM ?? null,
+      pFCF: m.pfcfShareTTM ?? null,
+
+      // Profitability
+      eps: m.epsNormalizedAnnual ?? null,
+      roe: m.roeTTM ?? null,
+      roic: m.roiTTM ?? null,
+      operatingMargin: m.operatingMarginAnnual ?? null,
+      netMargin: m.netProfitMarginAnnual ?? null,
+      revenueGrowth: m.revenueGrowthTTMYoy ?? null,
+
+      // Financial Health
+      debtEquity: m['totalDebt/totalEquityAnnual'] ?? null,
+      currentRatio: m.currentRatioAnnual ?? null,
+      quickRatio: m.quickRatioAnnual ?? null,
+      interestCoverage: m.interestCoverageAnnual ?? null,
+      netDebtEbitda,
+      fcf: m.freeCashFlowAnnual ?? null,
+      beta: m.beta ?? null,
+
+      // Shareholder Returns
+      dividendYield: m.dividendYieldIndicatedAnnual ?? null,
+      payoutRatio: m.payoutRatioAnnual ?? null,
+      buybackYield: m.buyBackTTM ?? null,
+
+      // Market Activity
+      marketCap: formatMarketCap(profile.marketCapitalization),
+      avgVolume: m['10DayAverageTradingVolume'] ?? m['3MonthAverageTradingVolume'] ?? null,
+      week52High: quote['52WeekHigh'] ?? m['52WeekHigh'] ?? null,
+      week52Low: quote['52WeekLow'] ?? m['52WeekLow'] ?? null,
+
+      // Company branding
+      logo: profile.logo || null,
+      website: profile.weburl || null,
+      exchange: profile.exchange || null,
+    };
+
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT OR REPLACE INTO ticker_metrics (symbol, metrics_json, fetched_at) VALUES (?, ?, ?)'
+    ).run(symbol, JSON.stringify(metrics), now);
+
+    res.json({ metrics, cached: false, fetched_at: now });
   } catch (err) {
-    console.error('Error fetching ticker:', err);
-    res.status(500).json({ error: 'Failed to fetch ticker details' });
+    console.error('Error fetching metrics:', err);
+    res.json({ metrics: {}, cached: false, fetched_at: null });
   }
 });
 
-// GET /:symbol/price - Get price history (30 days) from Finnhub
+// GET /:symbol/price - Get price history (30 days) from Finnhub (must be before /:symbol)
 router.get('/:symbol/price', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
@@ -126,13 +186,28 @@ router.get('/:symbol/price', async (req, res) => {
   }
 });
 
-// GET /:symbol/analysis - AI bull/bear analysis with conviction score
+// GET /:symbol/analysis - AI bull/bear analysis with 24h cache (must be before /:symbol)
 router.get('/:symbol/analysis', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
+    const force = req.query.force === 'true';
+
+    // Check cache (skip if force=true)
+    if (!force) {
+      const cached = db.prepare('SELECT * FROM ticker_analysis_cache WHERE symbol = ?').get(symbol);
+      if (cached && (Date.now() - new Date(cached.fetched_at).getTime()) < CACHE_TTL_MS) {
+        return res.json({
+          bull: cached.bull,
+          bear: cached.bear,
+          conviction: cached.conviction,
+          cached: true,
+          fetched_at: cached.fetched_at,
+        });
+      }
+    }
 
     if (!anthropic) {
-      return res.json({ bull: 'API key not configured.', bear: 'API key not configured.', conviction: 50 });
+      return res.json({ bull: 'API key not configured.', bear: 'API key not configured.', conviction: 50, cached: false });
     }
 
     const ticker = db.prepare('SELECT * FROM tickers WHERE symbol = ?').get(symbol);
@@ -164,24 +239,65 @@ Respond in exactly this JSON format (no markdown, no code blocks):
     });
 
     const text = response.content[0]?.text || '';
+    let bull = text, bear = '', conviction = 50;
+
     try {
-      // Try to parse as JSON
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        res.json({
-          bull: parsed.bull || '',
-          bear: parsed.bear || '',
-          conviction: Math.min(100, Math.max(0, parseInt(parsed.conviction) || 50)),
-        });
-        return;
+        bull = parsed.bull || '';
+        bear = parsed.bear || '';
+        conviction = Math.min(100, Math.max(0, parseInt(parsed.conviction) || 50));
       }
     } catch {}
 
-    res.json({ bull: text, bear: '', conviction: 50 });
+    const now = new Date().toISOString();
+    db.prepare(
+      'INSERT OR REPLACE INTO ticker_analysis_cache (symbol, bull, bear, conviction, fetched_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(symbol, bull, bear, conviction, now);
+
+    res.json({ bull, bear, conviction, cached: false, fetched_at: now });
   } catch (err) {
     console.error('Error generating analysis:', err);
-    res.json({ bull: 'Analysis temporarily unavailable.', bear: '', conviction: 50 });
+    res.json({ bull: 'Analysis temporarily unavailable.', bear: '', conviction: 50, cached: false });
+  }
+});
+
+// GET /:symbol - Get ticker detail with related data
+router.get('/:symbol', (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const upperSymbol = symbol.toUpperCase();
+
+    const ticker = db.prepare(
+      'SELECT * FROM tickers WHERE symbol = ?'
+    ).get(upperSymbol);
+
+    if (!ticker) {
+      return res.status(404).json({ error: 'Ticker not found' });
+    }
+
+    const articles = db.prepare(
+      `SELECT * FROM articles WHERE tickers LIKE '%"' || ? || '"%' ORDER BY published_at DESC LIMIT 20`
+    ).all(upperSymbol);
+
+    const filings = db.prepare(
+      'SELECT * FROM filings WHERE ticker = ? ORDER BY filed_at DESC LIMIT 20'
+    ).all(upperSymbol);
+
+    const earnings = db.prepare(
+      `SELECT * FROM earnings WHERE ticker = ? AND earnings_date >= date('now') ORDER BY earnings_date ASC LIMIT 1`
+    ).get(upperSymbol);
+
+    res.json({
+      ticker,
+      articles,
+      filings,
+      earnings: earnings || null,
+    });
+  } catch (err) {
+    console.error('Error fetching ticker:', err);
+    res.status(500).json({ error: 'Failed to fetch ticker details' });
   }
 });
 
