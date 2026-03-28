@@ -30,6 +30,7 @@ function Header() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [headerSearch, setHeaderSearch] = useState('');
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -41,9 +42,17 @@ function Header() {
         if (data.last_updated) setLastUpdated(data.last_updated);
       } catch {}
     };
+    const fetchUnread = async () => {
+      try {
+        const res = await fetch('/api/messages/unread-count', { credentials: 'include' });
+        if (res.ok) { const d = await res.json(); setUnreadMessages(d.count || 0); }
+      } catch {}
+    };
     fetchSettings();
-    const interval = setInterval(fetchSettings, 60000);
-    return () => clearInterval(interval);
+    fetchUnread();
+    const settingsInterval = setInterval(fetchSettings, 60000);
+    const unreadInterval = setInterval(fetchUnread, 30000);
+    return () => { clearInterval(settingsInterval); clearInterval(unreadInterval); };
   }, [user]);
 
   const handleRefresh = async () => {
@@ -86,7 +95,14 @@ function Header() {
               <NavLink to="/social" className={navLinkClass}>Social</NavLink>
               <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
               <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
-              <NavLink to="/friends" className={navLinkClass}>Friends</NavLink>
+              <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
+                Friends
+                {unreadMessages > 0 && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center leading-tight">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
+              </NavLink>
             </nav>
           )}
         </div>
@@ -144,7 +160,14 @@ function Header() {
           <NavLink to="/social" className={navLinkClass}>Social</NavLink>
           <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
           <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
-          <NavLink to="/friends" className={navLinkClass}>Friends</NavLink>
+          <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
+            Friends
+            {unreadMessages > 0 && (
+              <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-blue-500 text-white min-w-[16px] text-center leading-tight">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
+              </span>
+            )}
+          </NavLink>
         </nav>
       )}
     </header>

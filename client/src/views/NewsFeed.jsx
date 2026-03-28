@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import TickerChip from '../components/TickerChip.jsx';
 import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
+import ShareModal from '../components/ShareModal.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 import { apiPatch } from '../hooks/useApi.js';
@@ -9,6 +10,7 @@ import { apiPatch } from '../hooks/useApi.js';
 export default function NewsFeed() {
   const { theme } = useTheme();
   const dark = theme === 'dark';
+  const [shareTarget, setShareTarget] = useState(null);
   const [articles, setArticles] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -163,6 +165,13 @@ export default function NewsFeed() {
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   </button>
+                  <button
+                    onClick={() => setShareTarget({ type: 'article', data: { id: article.id, headline: article.headline, url: article.url, source: article.source, published_at: article.published_at, tickers: article.tickers } })}
+                    className={`p-1.5 rounded-md transition-colors ${dark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-300 hover:text-slate-500'}`}
+                    title="Share"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                  </button>
                 </div>
               </div>
             </article>
@@ -182,6 +191,10 @@ export default function NewsFeed() {
             Next
           </button>
         </div>
+      )}
+
+      {shareTarget && (
+        <ShareModal attachment={shareTarget} onClose={() => setShareTarget(null)} />
       )}
     </div>
   );

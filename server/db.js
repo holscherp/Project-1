@@ -179,6 +179,49 @@ function initDb() {
       created_at TEXT NOT NULL,
       UNIQUE(requester_id, addressee_id)
     );
+
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL CHECK(type IN ('direct', 'group')),
+      name TEXT,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversation_participants (
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      joined_at TEXT NOT NULL,
+      last_read_at TEXT,
+      PRIMARY KEY (conversation_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sender_id TEXT REFERENCES users(id),
+      body TEXT,
+      attachment_type TEXT CHECK(attachment_type IN ('article', 'ticker') OR attachment_type IS NULL),
+      attachment_data TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id);
+
+    CREATE TABLE IF NOT EXISTS ticker_metrics (
+      symbol TEXT PRIMARY KEY,
+      metrics_json TEXT NOT NULL,
+      fetched_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ticker_analysis_cache (
+      symbol TEXT PRIMARY KEY,
+      bull TEXT,
+      bear TEXT,
+      conviction INTEGER,
+      fetched_at TEXT NOT NULL
+    );
   `);
 
   // ── Seed Data ──────────────────────────────────────────────────────────
