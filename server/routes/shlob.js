@@ -85,28 +85,51 @@ router.post('/ask', requireAuth, async (req, res) => {
       new Date().toISOString()
     );
 
-    // Gather context from the database
-    const recentArticles = db.prepare(
-      'SELECT headline, summary, source, tickers, published_at FROM articles ORDER BY published_at DESC LIMIT 20'
-    ).all();
+    // Gather context scoped to THIS user's watchlist
+    const tickers = db.prepare(`
+      SELECT t.symbol, t.name, t.sector, t.market_cap_category
+      FROM user_watchlist_tickers uwt
+      JOIN tickers t ON t.symbol = uwt.ticker_symbol
+      WHERE uwt.user_id = ?
+      ORDER BY t.symbol
+    `).all(userId);
 
-    const tickers = db.prepare(
-      'SELECT symbol, name, sector, market_cap_category FROM tickers ORDER BY symbol'
-    ).all();
+    const watchlistSymbols = tickers.map(t => t.symbol);
 
-    const recentFilings = db.prepare(
-      'SELECT ticker, filing_type, title, filed_at FROM filings ORDER BY filed_at DESC LIMIT 10'
-    ).all();
+    // News: only articles mentioning at least one of the user's watchlist tickers
+    let recentArticles = [];
+    if (watchlistSymbols.length > 0) {
+      const likeConditions = watchlistSymbols.map(() => `tickers LIKE '%"' || ? || '"%'`).join(' OR ');
+      recentArticles = db.prepare(
+        `SELECT headline, summary, source, tickers, published_at FROM articles WHERE ${likeConditions} ORDER BY published_at DESC LIMIT 20`
+      ).all(...watchlistSymbols);
+    }
 
-    const upcomingEarnings = db.prepare(
-      'SELECT ticker, earnings_date, estimate_eps, fiscal_quarter FROM earnings ORDER BY earnings_date ASC LIMIT 10'
-    ).all();
+    // Filings: only for user's watchlist tickers
+    let recentFilings = [];
+    if (watchlistSymbols.length > 0) {
+      const placeholders = watchlistSymbols.map(() => '?').join(', ');
+      recentFilings = db.prepare(
+        `SELECT ticker, filing_type, title, filed_at FROM filings WHERE ticker IN (${placeholders}) ORDER BY filed_at DESC LIMIT 10`
+      ).all(...watchlistSymbols);
+    }
+
+    // Earnings: only for user's watchlist tickers
+    let upcomingEarnings = [];
+    if (watchlistSymbols.length > 0) {
+      const placeholders = watchlistSymbols.map(() => '?').join(', ');
+      upcomingEarnings = db.prepare(
+        `SELECT ticker, earnings_date, estimate_eps, fiscal_quarter FROM earnings WHERE ticker IN (${placeholders}) ORDER BY earnings_date ASC LIMIT 10`
+      ).all(...watchlistSymbols);
+    }
 
     // Build context string
     const contextParts = [];
 
     if (tickers.length > 0) {
       contextParts.push(`WATCHLIST (${tickers.length} tickers):\n${tickers.map(t => `${t.symbol} - ${t.name} (${t.sector}, ${t.market_cap_category})`).join('\n')}`);
+    } else {
+      contextParts.push('WATCHLIST: empty — user has not added any tickers.');
     }
 
     if (recentArticles.length > 0) {

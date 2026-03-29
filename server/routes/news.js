@@ -1,17 +1,53 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
 // GET / - List articles, paginated with filters
-router.get('/', (req, res) => {
+// ?tab=watchlist  → only articles mentioning user's watchlist tickers
+// ?tab=market     → source_type IN ('news','filing'), no overlap with user's watchlist tickers
+// (no tab)        → unfiltered, backward-compatible
+router.get('/', requireAuth, (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
+    const tab = req.query.tab; // 'watchlist' | 'market' | undefined
 
     const conditions = [];
     const params = [];
+
+    // Resolve user's watchlist symbols for tab-based filtering
+    let watchlistSymbols = [];
+    if (tab === 'watchlist' || tab === 'market') {
+      const rows = db.prepare(
+        'SELECT ticker_symbol FROM user_watchlist_tickers WHERE user_id = ?'
+      ).all(req.user.id);
+      watchlistSymbols = rows.map(r => r.ticker_symbol);
+    }
+
+    if (tab === 'watchlist') {
+      if (watchlistSymbols.length === 0) {
+        // Empty watchlist → return zero results immediately
+        return res.json({ articles: [], total: 0, page, limit, empty_watchlist: true });
+      }
+      // At least one watchlist ticker must appear in the article's tickers JSON
+      const likeConditions = watchlistSymbols.map(() => `tickers LIKE '%"' || ? || '"%'`).join(' OR ');
+      conditions.push(`(${likeConditions})`);
+      params.push(...watchlistSymbols);
+    }
+
+    if (tab === 'market') {
+      // Only news and filing source types
+      conditions.push(`source_type IN ('news', 'filing')`);
+      // Exclude articles that mention any of the user's watchlist tickers
+      if (watchlistSymbols.length > 0) {
+        const excludeConditions = watchlistSymbols.map(() => `tickers NOT LIKE '%"' || ? || '"%'`).join(' AND ');
+        conditions.push(`(${excludeConditions})`);
+        params.push(...watchlistSymbols);
+      }
+    }
 
     if (req.query.ticker) {
       conditions.push(`tickers LIKE '%"' || ? || '"%'`);
@@ -74,7 +110,7 @@ router.get('/', (req, res) => {
 });
 
 // PATCH /:id - Update article flags
-router.patch('/:id', (req, res) => {
+router.patch('/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
     const { is_read, is_bookmarked, is_flagged } = req.body;

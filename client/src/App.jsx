@@ -3,10 +3,8 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNaviga
 import { ThemeProvider, useTheme } from './context/ThemeContext.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import NewsFeed from './views/NewsFeed.jsx';
-import FilingsView from './views/FilingsView.jsx';
 import EarningsView from './views/EarningsView.jsx';
 import ShlobView from './views/ShlobView.jsx';
-import SocialView from './views/SocialView.jsx';
 import WatchlistView from './views/WatchlistView.jsx';
 import TickerDetail from './views/TickerDetail.jsx';
 import LoginView from './views/LoginView.jsx';
@@ -90,9 +88,7 @@ function Header() {
           {user && (
             <nav className="hidden md:flex items-center gap-1">
               <NavLink to="/" end className={navLinkClass}>News</NavLink>
-              <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
               <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-              <NavLink to="/social" className={navLinkClass}>Social</NavLink>
               <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
               <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
               <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
@@ -155,9 +151,7 @@ function Header() {
       {user && (
         <nav className="md:hidden flex items-center gap-1 px-6 pb-2 overflow-x-auto">
           <NavLink to="/" end className={navLinkClass}>News</NavLink>
-          <NavLink to="/filings" className={navLinkClass}>Filings</NavLink>
           <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
-          <NavLink to="/social" className={navLinkClass}>Social</NavLink>
           <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
           <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
           <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
@@ -185,9 +179,9 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={user && !loading ? <Navigate to="/" replace /> : <LoginView />} />
           <Route path="/" element={<ProtectedRoute><NewsFeed /></ProtectedRoute>} />
-          <Route path="/filings" element={<ProtectedRoute><FilingsView /></ProtectedRoute>} />
+          <Route path="/filings" element={<Navigate to="/" replace />} />
           <Route path="/earnings" element={<ProtectedRoute><EarningsView /></ProtectedRoute>} />
-          <Route path="/social" element={<ProtectedRoute><SocialView /></ProtectedRoute>} />
+          <Route path="/social" element={<Navigate to="/" replace />} />
           <Route path="/shlob" element={<ProtectedRoute><ShlobView /></ProtectedRoute>} />
           <Route path="/watchlist" element={<ProtectedRoute><WatchlistView /></ProtectedRoute>} />
           <Route path="/ticker/:symbol" element={<ProtectedRoute><TickerDetail /></ProtectedRoute>} />
