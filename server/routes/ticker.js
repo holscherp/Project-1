@@ -147,42 +147,90 @@ router.get('/:symbol/metrics', async (req, res) => {
   }
 });
 
-// GET /:symbol/price - Get price history (30 days) from Finnhub (must be before /:symbol)
+// GET /:symbol/price - Get price history from Finnhub (must be before /:symbol)
+// Query param: ?range=1d|1w|1m|1y  (default: 1m)
+// When range=1y, response also includes yearHigh and yearLow with dates.
 router.get('/:symbol/price', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
+    const range = req.query.range || '1m';
 
     if (!FINNHUB_API_KEY) {
-      return res.json({ current: null, history: [] });
+      return res.json({ current: null, history: [], yearHigh: null, yearLow: null });
     }
 
-    // Fetch quote
+    // Fetch quote (current price + daily change)
     const quoteRes = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`
     );
     const quote = quoteRes.ok ? await quoteRes.json() : {};
     const current = quote.c || null;
 
-    // Fetch 30-day candles
-    const now = Math.floor(Date.now() / 1000);
-    const thirtyDaysAgo = now - 30 * 86400;
+    const nowTs = Math.floor(Date.now() / 1000);
+
+    // Determine candle resolution and from-timestamp based on range
+    let resolution;
+    let fromTs;
+    if (range === '1d') {
+      resolution = '60'; // hourly
+      fromTs = nowTs - 86400;
+    } else if (range === '1w') {
+      resolution = 'D';
+      fromTs = nowTs - 7 * 86400;
+    } else if (range === '1y') {
+      resolution = 'D';
+      fromTs = nowTs - 365 * 86400;
+    } else {
+      // default: 1m
+      resolution = 'D';
+      fromTs = nowTs - 30 * 86400;
+    }
+
     const candleRes = await fetch(
-      `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${thirtyDaysAgo}&to=${now}&token=${FINNHUB_API_KEY}`
+      `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${fromTs}&to=${nowTs}&token=${FINNHUB_API_KEY}`
     );
     const candles = candleRes.ok ? await candleRes.json() : {};
 
     let history = [];
     if (candles.s === 'ok' && candles.c && candles.t) {
-      history = candles.t.map((t, i) => ({
-        date: new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        price: candles.c[i],
-      }));
+      history = candles.t.map((t, i) => {
+        const d = new Date(t * 1000);
+        const label = range === '1d'
+          ? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return { date: label, price: candles.c[i], ts: t };
+      });
     }
 
-    res.json({ current, history });
+    // Compute 52-week high/low with dates when range=1y
+    let yearHigh = null;
+    let yearLow = null;
+    if (range === '1y' && history.length > 0) {
+      // Use the high[] and low[] arrays if available for accuracy
+      const highs = candles.h || candles.c;
+      const lows = candles.l || candles.c;
+
+      let maxPrice = -Infinity;
+      let maxIdx = 0;
+      let minPrice = Infinity;
+      let minIdx = 0;
+
+      for (let i = 0; i < highs.length; i++) {
+        if (highs[i] > maxPrice) { maxPrice = highs[i]; maxIdx = i; }
+        if (lows[i] < minPrice) { minPrice = lows[i]; minIdx = i; }
+      }
+
+      const fmtDate = (ts) =>
+        new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      yearHigh = { price: maxPrice, date: fmtDate(candles.t[maxIdx]) };
+      yearLow  = { price: minPrice, date: fmtDate(candles.t[minIdx]) };
+    }
+
+    res.json({ current, history, yearHigh, yearLow });
   } catch (err) {
     console.error('Error fetching price:', err);
-    res.json({ current: null, history: [] });
+    res.json({ current: null, history: [], yearHigh: null, yearLow: null });
   }
 });
 

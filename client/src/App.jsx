@@ -6,6 +6,7 @@ import NewsFeed from './views/NewsFeed.jsx';
 import EarningsView from './views/EarningsView.jsx';
 import ShlobView from './views/ShlobView.jsx';
 import WatchlistView from './views/WatchlistView.jsx';
+import PortfolioView from './views/PortfolioView.jsx';
 import TickerDetail from './views/TickerDetail.jsx';
 import LoginView from './views/LoginView.jsx';
 import FriendsView from './views/FriendsView.jsx';
@@ -88,9 +89,9 @@ function Header() {
           {user && (
             <nav className="hidden md:flex items-center gap-1">
               <NavLink to="/" end className={navLinkClass}>News</NavLink>
-              <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
               <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
               <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+              <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>
               <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
                 Friends
                 {unreadMessages > 0 && (
@@ -151,9 +152,9 @@ function Header() {
       {user && (
         <nav className="md:hidden flex items-center gap-1 px-6 pb-2 overflow-x-auto">
           <NavLink to="/" end className={navLinkClass}>News</NavLink>
-          <NavLink to="/earnings" className={navLinkClass}>Earnings</NavLink>
           <NavLink to="/shlob" className={navLinkClass}>Shlob</NavLink>
           <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>
+          <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>
           <NavLink to="/friends" className={({ isActive }) => navLinkClass({ isActive }) + ' relative'}>
             Friends
             {unreadMessages > 0 && (
@@ -184,6 +185,7 @@ function AppContent() {
           <Route path="/social" element={<Navigate to="/" replace />} />
           <Route path="/shlob" element={<ProtectedRoute><ShlobView /></ProtectedRoute>} />
           <Route path="/watchlist" element={<ProtectedRoute><WatchlistView /></ProtectedRoute>} />
+          <Route path="/portfolio" element={<ProtectedRoute><PortfolioView /></ProtectedRoute>} />
           <Route path="/ticker/:symbol" element={<ProtectedRoute><TickerDetail /></ProtectedRoute>} />
           <Route path="/friends" element={<ProtectedRoute><FriendsView /></ProtectedRoute>} />
           <Route path="/compare/:userId" element={<ProtectedRoute><CompareView /></ProtectedRoute>} />
