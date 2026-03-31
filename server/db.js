@@ -230,6 +230,22 @@ function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_shlob_usage_user ON shlob_usage(user_id, used_at);
+
+    CREATE TABLE IF NOT EXISTS user_portfolio_positions (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      ticker_symbol TEXT NOT NULL REFERENCES tickers(symbol) ON DELETE CASCADE,
+      shares REAL NOT NULL DEFAULT 0,
+      cost_basis_per_share REAL,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, ticker_symbol)
+    );
+
+    CREATE TABLE IF NOT EXISTS ticker_daily_summaries (
+      symbol TEXT PRIMARY KEY,
+      summary TEXT NOT NULL,
+      news_count INTEGER NOT NULL DEFAULT 0,
+      generated_at TEXT NOT NULL
+    );
   `);
 
   // ── Seed Data ──────────────────────────────────────────────────────────

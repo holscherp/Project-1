@@ -22,6 +22,10 @@ export default function NewsFeed() {
   const [filters, setFilters] = useState({ ticker: '', source_type: '', search: '' });
   const [activeTab, setActiveTab] = useState('watchlist'); // 'watchlist' | 'market'
 
+  const [digest, setDigest] = useState([]);
+  const [digestLoading, setDigestLoading] = useState(false);
+  const [digestOpen, setDigestOpen] = useState(true);
+
   const fetchArticles = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -45,6 +49,17 @@ export default function NewsFeed() {
   }, [page, filters, activeTab]);
 
   useEffect(() => { fetchArticles(); }, [fetchArticles]);
+
+  // Fetch daily digest when on watchlist tab
+  useEffect(() => {
+    if (activeTab !== 'watchlist') return;
+    setDigestLoading(true);
+    fetch('/api/digest', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { summaries: [] })
+      .then(data => setDigest(data.summaries || []))
+      .catch(() => setDigest([]))
+      .finally(() => setDigestLoading(false));
+  }, [activeTab]);
 
   // Reset to page 1 when tab changes
   const handleTabChange = (tab) => {
@@ -72,6 +87,15 @@ export default function NewsFeed() {
     if (diffHrs < 1) return `${Math.floor(diffMs / 60000)}m ago`;
     if (diffHrs < 24) return `${diffHrs}h ago`;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const formatDigestTime = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return isToday ? `Today at ${time}` : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${time}`;
   };
 
   const cardBg = dark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200';
@@ -113,6 +137,72 @@ export default function NewsFeed() {
           Market News
         </button>
       </div>
+
+      {/* Daily Digest Panel — only on My Watchlist tab */}
+      {activeTab === 'watchlist' && (
+        <div className={`mb-5 rounded-lg border ${dark ? 'border-slate-700/50 bg-slate-800/40' : 'border-slate-200 bg-slate-50'}`}>
+          <button
+            onClick={() => setDigestOpen(o => !o)}
+            className={`w-full flex items-center justify-between px-4 py-3 text-left`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Daily Digest
+              </span>
+              {digest.length > 0 && digest[0].generated_at && (
+                <span className={`text-[10px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>
+                  — {formatDigestTime(digest[0].generated_at)}
+                </span>
+              )}
+              {digestLoading && (
+                <span className={`text-[10px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>Loading…</span>
+              )}
+            </div>
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${digestOpen ? 'rotate-180' : ''} ${dark ? 'text-slate-500' : 'text-slate-400'}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {digestOpen && (
+            <div className={`border-t ${dark ? 'border-slate-700/50' : 'border-slate-200'}`}>
+              {digestLoading ? (
+                <p className={`px-4 py-3 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Loading digest…</p>
+              ) : digest.length === 0 ? (
+                <p className={`px-4 py-3 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Add tickers to your watchlist to see daily summaries here.
+                </p>
+              ) : digest.every(d => !d.summary) ? (
+                <p className={`px-4 py-3 text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Digest not yet available — summaries generate daily at 6:00 AM UTC.
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-700/30">
+                  {digest.map(item => (
+                    <div key={item.symbol} className="px-4 py-3 flex gap-3">
+                      <button
+                        onClick={() => navigate(`/ticker/${item.symbol}`)}
+                        className={`shrink-0 text-xs font-bold font-mono w-14 text-left pt-0.5 ${dark ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'}`}
+                      >
+                        {item.symbol}
+                      </button>
+                      <p className={`text-xs leading-relaxed flex-1 ${dark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {item.summary ?? (
+                          <span className={dark ? 'text-slate-600' : 'text-slate-400'}>
+                            No summary yet — generates daily at 6:00 AM UTC.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center mb-6">

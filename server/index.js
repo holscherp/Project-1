@@ -19,6 +19,8 @@ import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import friendsRoutes from './routes/friends.js';
 import messagesRoutes from './routes/messages.js';
+import portfolioRoutes from './routes/portfolio.js';
+import digestRoutes from './routes/digest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,10 +73,12 @@ app.use('/api/filings', filingsRoutes);
 app.use('/api/earnings', earningsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/shlob', shlobRoutes);
 app.use('/api/social', socialRoutes);
+app.use('/api/digest', digestRoutes);
 
 // SPA fallback: serve index.html for non-API routes in production
 if (process.env.NODE_ENV === 'production') {

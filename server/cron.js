@@ -5,7 +5,7 @@ import { fetchFinnhubNews, fetchFinnhubEarnings } from './services/finnhub.js';
 import { fetchRSSNews } from './services/rss.js';
 import { fetchSECFilings } from './services/sec.js';
 import { fetchSocialPosts } from './services/social.js';
-import { summarizeArticle } from './services/summarizer.js';
+import { summarizeArticle, generateDailyTickerSummary } from './services/summarizer.js';
 
 let isRunning = false;
 
@@ -216,6 +216,104 @@ export async function runFetchJob() {
   }
 }
 
+let isDailySummaryRunning = false;
+
+export async function runDailySummaryJob() {
+  if (isDailySummaryRunning) {
+    console.log('[DailySummary] Job already running, skipping');
+    return;
+  }
+
+  isDailySummaryRunning = true;
+  const startedAt = new Date().toISOString();
+  let jobLogId;
+  let processed = 0;
+  let errors = 0;
+
+  try {
+    const result = db.prepare(
+      'INSERT INTO job_log (job_type, status, message, started_at) VALUES (?, ?, ?, ?)'
+    ).run('daily_summary', 'running', 'Daily summary job started', startedAt);
+    jobLogId = result.lastInsertRowid;
+
+    const tickers = db.prepare('SELECT symbol, name, sector, description FROM tickers').all();
+
+    // 48-hour cutoff
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+    // Fetch the 20 most recent macro/market articles from last 48h (all sources, any tickers)
+    const macroPool = db.prepare(`
+      SELECT headline, summary, source, published_at
+      FROM articles
+      WHERE source_type IN ('news', 'filing')
+        AND published_at >= ?
+      ORDER BY published_at DESC
+      LIMIT 20
+    `).all(cutoff);
+
+    console.log(`[DailySummary] Processing ${tickers.length} tickers, macro pool: ${macroPool.length} articles`);
+
+    const upsertSummary = db.prepare(`
+      INSERT INTO ticker_daily_summaries (symbol, summary, news_count, generated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(symbol) DO UPDATE SET
+        summary = excluded.summary,
+        news_count = excluded.news_count,
+        generated_at = excluded.generated_at
+    `);
+
+    for (const ticker of tickers) {
+      try {
+        // Direct articles: those whose tickers JSON includes this symbol, last 48h
+        const directArticles = db.prepare(`
+          SELECT headline, summary, source, published_at
+          FROM articles
+          WHERE tickers LIKE ?
+            AND published_at >= ?
+          ORDER BY published_at DESC
+          LIMIT 10
+        `).all(`%"${ticker.symbol}"%`, cutoff);
+
+        // Macro articles: exclude any already in directArticles (by headline dedup)
+        const directHeadlines = new Set(directArticles.map(a => a.headline));
+        const macroArticles = macroPool.filter(a => !directHeadlines.has(a.headline));
+
+        const { summary, newsCount } = await generateDailyTickerSummary(
+          ticker,
+          directArticles,
+          macroArticles
+        );
+
+        upsertSummary.run(ticker.symbol, summary, newsCount, new Date().toISOString());
+        processed++;
+
+        // Rate limit: 300ms between Claude calls
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (err) {
+        console.error(`[DailySummary] Error for ${ticker.symbol}:`, err.message);
+        errors++;
+      }
+    }
+
+    const completedAt = new Date().toISOString();
+    const message = `Completed: ${processed} summaries generated, ${errors} errors`;
+    db.prepare(
+      'UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?'
+    ).run('completed', message, completedAt, jobLogId);
+
+    console.log(`[DailySummary] ${message}`);
+  } catch (err) {
+    console.error('[DailySummary] Fatal error:', err);
+    if (jobLogId) {
+      db.prepare(
+        'UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?'
+      ).run('failed', `Fatal: ${err.message}`, new Date().toISOString(), jobLogId);
+    }
+  } finally {
+    isDailySummaryRunning = false;
+  }
+}
+
 export function startCron() {
   console.log('[Cron] Scheduling hourly fetch job');
 
@@ -223,6 +321,12 @@ export function startCron() {
   cron.schedule('0 * * * *', () => {
     console.log('[Cron] Hourly job triggered');
     runFetchJob();
+  });
+
+  // Run daily summary job every day at 6:00 AM UTC
+  cron.schedule('0 6 * * *', () => {
+    console.log('[Cron] Daily summary job triggered');
+    runDailySummaryJob();
   });
 
   // Run initial fetch after 10 seconds to let server start up

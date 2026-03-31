@@ -92,6 +92,72 @@ export async function summarizeArticle(article, watchlistTickers = []) {
 }
 
 /**
+ * Generate a daily briefing summary for a single ticker.
+ * Uses direct articles (mentioning the ticker) plus broad macro news from last 48h.
+ */
+export async function generateDailyTickerSummary(ticker, directArticles = [], macroArticles = []) {
+  const fallback = {
+    summary: `No summary available — no recent news found for ${ticker.symbol}.`,
+    newsCount: directArticles.length + macroArticles.length,
+  };
+
+  if (!anthropic) {
+    console.log('[Summarizer] No ANTHROPIC_API_KEY set, using fallback daily summary');
+    return fallback;
+  }
+
+  const formatArticleList = (articles) =>
+    articles.length === 0
+      ? 'None.'
+      : articles
+          .map((a, i) => `${i + 1}. [${a.source || 'Unknown'}] ${a.headline}${a.summary ? ` — ${a.summary}` : ''}`)
+          .join('\n');
+
+  const systemPrompt = `You are a senior macro research analyst at a multi-strategy hedge fund. Write concise, specific, institutional-quality daily briefings. No filler, no generic commentary. Lead with the most actionable implication for an investor holding this stock today.`;
+
+  const userContent = [
+    `Ticker: ${ticker.symbol} — ${ticker.name || ticker.symbol}`,
+    `Sector: ${ticker.sector || 'Unknown'}`,
+    `Description: ${ticker.description || 'No description available.'}`,
+    '',
+    'Write a 2–3 sentence daily briefing for this stock based on the news below.',
+    'Your briefing must:',
+    '- Identify any direct news about this stock',
+    '- Identify macro-level events (Fed decisions, inflation data, sector trends, commodity moves, geopolitical events) that could plausibly impact this stock even if they do not mention it by name',
+    '- Lead with the most important implication for an investor holding this position today',
+    '- Be specific, institutional, and direct. No filler.',
+    '',
+    `--- DIRECT NEWS ABOUT ${ticker.symbol} (last 48h) ---`,
+    formatArticleList(directArticles),
+    '',
+    '--- BROADER MARKET & MACRO NEWS (last 48h) ---',
+    formatArticleList(macroArticles),
+  ].join('\n');
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    const text =
+      response.content?.[0]?.type === 'text' ? response.content[0].text.trim() : '';
+
+    if (!text) return fallback;
+
+    return {
+      summary: text,
+      newsCount: directArticles.length + macroArticles.length,
+    };
+  } catch (err) {
+    console.error(`[Summarizer] Error generating daily summary for ${ticker.symbol}:`, err.message);
+    return fallback;
+  }
+}
+
+/**
  * Generate a company description using Claude.
  */
 export async function generateTickerDescription(symbol, name) {
