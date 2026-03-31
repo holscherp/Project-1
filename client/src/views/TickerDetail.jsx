@@ -6,41 +6,156 @@ import TickerChip from '../components/TickerChip.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
-import { ResponsiveContainer, AreaChart, Area, Tooltip, YAxis } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis } from 'recharts';
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// ── Price Chart ───────────────────────────────────────────────────────────────
 
-function Sparkline({ data, dark }) {
-  if (!data || data.length === 0) return null;
-  const isPositive = data.length > 1 && data[data.length - 1].price >= data[0].price;
+const RANGES = [
+  { label: '24H', value: '1d' },
+  { label: '1W',  value: '1w' },
+  { label: '1M',  value: '1m' },
+  { label: '1Y',  value: '1y' },
+];
+
+function PriceChart({ symbol, dark, onPriceLoaded }) {
+  const [range, setRange] = useState('1m');
+  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [rangeHigh, setRangeHigh] = useState(null);
+  const [rangeLow, setRangeLow] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setHistory([]);
+    setRangeHigh(null);
+    setRangeLow(null);
+
+    fetch(`/api/ticker/${symbol}/price?range=${range}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        if (d.history) setHistory(d.history);
+        if (d.rangeHigh) setRangeHigh(d.rangeHigh);
+        if (d.rangeLow)  setRangeLow(d.rangeLow);
+        if (onPriceLoaded && d.current != null) {
+          const hist = d.history || [];
+          const pctChange = hist.length > 1
+            ? ((hist[hist.length - 1].price - hist[0].price) / hist[0].price * 100).toFixed(2)
+            : null;
+          onPriceLoaded(d.current, pctChange, RANGES.find(r => r.value === range)?.label);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [symbol, range]);
+
+  const isPositive = history.length > 1 && history[history.length - 1].price >= history[0].price;
   const color = isPositive ? '#16a34a' : '#dc2626';
+  const gradId = `pgrad-${symbol}-${isPositive ? 'up' : 'down'}`;
+
+  const cardBg = dark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200';
+  const muted   = dark ? 'text-slate-500' : 'text-slate-400';
+
+  // Thin out X-axis ticks to avoid crowding
+  const tickCount = range === '1d' ? 6 : range === '1y' ? 8 : 5;
+  const tickInterval = history.length > 0 ? Math.max(1, Math.floor(history.length / tickCount)) : 1;
+
   return (
-    <ResponsiveContainer width="100%" height={72}>
-      <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-        <defs>
-          <linearGradient id={`tgrad-${isPositive ? 'up' : 'down'}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.15} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <YAxis domain={['dataMin', 'dataMax']} hide />
-        <Tooltip
-          contentStyle={{
-            background: dark ? '#1e293b' : '#fff',
-            border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`,
-            borderRadius: '6px',
-            fontSize: '11px',
-            fontFamily: 'var(--font-mono)',
-          }}
-          labelFormatter={(i) => data[i]?.date || ''}
-          formatter={(val) => [`$${val.toFixed(2)}`, 'Price']}
-        />
-        <Area type="monotone" dataKey="price" stroke={color} strokeWidth={1.5}
-          fill={`url(#tgrad-${isPositive ? 'up' : 'down'})`} />
-      </AreaChart>
-    </ResponsiveContainer>
+    <div className={`rounded-lg border p-4 mb-6 ${cardBg}`}>
+      {/* Header row: label + range buttons */}
+      <div className="flex items-center justify-between mb-3">
+        <span className={`text-[10px] font-semibold uppercase tracking-wider ${muted}`}>Price</span>
+        <div className={`flex gap-0.5 p-0.5 rounded-md ${dark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+          {RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => setRange(r.value)}
+              className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-all ${
+                range === r.value
+                  ? dark ? 'bg-slate-600 text-white' : 'bg-white text-slate-900 shadow-sm'
+                  : dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chart */}
+      {loading ? (
+        <div className={`h-[120px] flex items-center justify-center text-xs ${muted}`}>Loading...</div>
+      ) : history.length === 0 ? (
+        <div className={`h-[120px] flex items-center justify-center text-xs ${muted}`}>No data available</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={120}>
+          <AreaChart data={history} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.15} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <YAxis domain={['dataMin', 'dataMax']} hide />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: dark ? '#64748b' : '#94a3b8', fontFamily: 'var(--font-mono)' }}
+              tickLine={false}
+              axisLine={false}
+              interval={tickInterval - 1}
+            />
+            <Tooltip
+              contentStyle={{
+                background: dark ? '#1e293b' : '#fff',
+                border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`,
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+              }}
+              labelFormatter={(i) => history[i]?.date || ''}
+              formatter={(val) => [`$${val.toFixed(2)}`, 'Price']}
+            />
+            <Area
+              type="monotone"
+              dataKey="price"
+              stroke={color}
+              strokeWidth={1.5}
+              fill={`url(#${gradId})`}
+              dot={false}
+              activeDot={{ r: 3, fill: color }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+
+      {/* High / Low row */}
+      {(rangeHigh || rangeLow) && (
+        <div className={`flex items-center gap-6 mt-3 pt-3 border-t ${dark ? 'border-slate-700/50' : 'border-slate-100'}`}>
+          {rangeHigh && (
+            <div>
+              <span className={`text-[10px] ${muted}`}>Period High</span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xs font-mono font-semibold text-green-500">${rangeHigh.price.toFixed(2)}</span>
+                <span className={`text-[10px] ${muted}`}>{rangeHigh.date}</span>
+              </div>
+            </div>
+          )}
+          {rangeLow && (
+            <div>
+              <span className={`text-[10px] ${muted}`}>Period Low</span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xs font-mono font-semibold text-red-500">${rangeLow.price.toFixed(2)}</span>
+                <span className={`text-[10px] ${muted}`}>{rangeLow.date}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
+
+// ── Other Sub-components ──────────────────────────────────────────────────────
 
 function ConvictionMeter({ score, dark }) {
   const color = score >= 70 ? '#16a34a' : score >= 40 ? '#d97706' : '#dc2626';
@@ -89,7 +204,7 @@ function MetricCard({ title, rows, dark }) {
   );
 }
 
-// ── Formatters ───────────────────────────────────────────────────────────────
+// ── Formatters ────────────────────────────────────────────────────────────────
 
 const fmt = {
   x: (v) => v == null ? null : `${v.toFixed(1)}×`,
@@ -101,9 +216,9 @@ const fmt = {
   signed_pct: (v) => v == null ? null : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`,
 };
 
-// ── Tabs ─────────────────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────────────────
 
-const TABS = ['Overview', 'News', 'AI Analysis', 'Filings'];
+const TABS = ['Overview', 'News', 'Earnings', 'AI Analysis', 'Filings'];
 
 function TabBar({ active, setActive, counts, dark }) {
   return (
@@ -158,8 +273,9 @@ export default function TickerDetail() {
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  const [priceData, setPriceData] = useState([]);
+  // Price state updated by PriceChart via callback
   const [currentPrice, setCurrentPrice] = useState(null);
+  const [priceChange, setPriceChange] = useState(null);
 
   const fetchAnalysis = async (force = false) => {
     setAnalysisLoading(true);
@@ -171,16 +287,6 @@ export default function TickerDetail() {
   };
 
   useEffect(() => {
-    async function fetchPrice() {
-      try {
-        const res = await fetch(`/api/ticker/${symbol}/price`, { credentials: 'include' });
-        if (res.ok) {
-          const d = await res.json();
-          if (d.history) setPriceData(d.history);
-          if (d.current) setCurrentPrice(d.current);
-        }
-      } catch {}
-    }
     async function fetchMetrics() {
       setMetricsLoading(true);
       try {
@@ -192,7 +298,6 @@ export default function TickerDetail() {
       } catch {}
       setMetricsLoading(false);
     }
-    fetchPrice();
     fetchMetrics();
     fetchAnalysis(false);
   }, [symbol]);
@@ -206,22 +311,28 @@ export default function TickerDetail() {
   if (error) return <ErrorMessage message={error} onRetry={refetch} />;
   if (!data?.ticker) return <ErrorMessage message="Ticker not found" />;
 
-  const { ticker, articles, filings, earnings } = data;
+  const { ticker, articles, filings, earnings, allEarnings } = data;
 
   const formatDate = (iso) => {
     if (!iso) return '';
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const priceChange = priceData.length > 1
-    ? ((priceData[priceData.length - 1].price - priceData[0].price) / priceData[0].price * 100).toFixed(2)
-    : null;
+  const daysUntil = (iso) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = Math.ceil((d - now) / 86400000);
+    if (diff <= 0) return 'Past';
+    if (diff === 1) return 'Tomorrow';
+    return `${diff} days`;
+  };
 
   const logo = metrics?.logo;
 
   const tabCounts = {
     'News': articles?.length,
     'Filings': filings?.length,
+    'Earnings': allEarnings?.length || undefined,
   };
 
   return (
@@ -303,7 +414,7 @@ export default function TickerDetail() {
               <div className={`text-2xl font-mono font-bold ${heading}`}>${currentPrice.toFixed(2)}</div>
               {priceChange && (
                 <div className={`text-xs font-mono font-semibold mt-0.5 ${Number(priceChange) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {Number(priceChange) >= 0 ? '+' : ''}{priceChange}% 30d
+                  {Number(priceChange) >= 0 ? '+' : ''}{priceChange}%
                 </div>
               )}
             </div>
@@ -311,21 +422,22 @@ export default function TickerDetail() {
         </div>
       </div>
 
+      {/* ── Interactive Price Chart (always visible) ───────────────────────── */}
+      <PriceChart
+        symbol={symbol}
+        dark={dark}
+        onPriceLoaded={(price, pct) => {
+          setCurrentPrice(price);
+          setPriceChange(pct);
+        }}
+      />
+
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <TabBar active={activeTab} setActive={setActiveTab} counts={tabCounts} dark={dark} />
 
       {/* ── Tab: Overview ────────────────────────────────────────────────── */}
       {activeTab === 'Overview' && (
         <div>
-          {priceData.length > 0 && (
-            <div className={`rounded-lg border p-4 mb-5 ${cardBg}`}>
-              <span className={`text-[10px] font-semibold uppercase tracking-wider ${muted}`}>30-Day Price</span>
-              <div className="mt-2">
-                <Sparkline data={priceData} dark={dark} />
-              </div>
-            </div>
-          )}
-
           {metricsLoading ? (
             <LoadingSpinner message="Loading metrics..." />
           ) : (
@@ -401,6 +513,53 @@ export default function TickerDetail() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab: Earnings ────────────────────────────────────────────────── */}
+      {activeTab === 'Earnings' && (
+        <div className={`rounded-lg border p-5 ${cardBg}`}>
+          {!allEarnings || allEarnings.length === 0 ? (
+            <p className={`text-sm ${muted}`}>No earnings data recorded for {ticker.symbol} yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {allEarnings.map(e => {
+                const isPast = new Date(e.earnings_date) < new Date();
+                const label = daysUntil(e.earnings_date);
+                return (
+                  <div
+                    key={`${e.ticker}-${e.earnings_date}`}
+                    className={`flex items-center justify-between py-3 border-b last:border-0 ${dark ? 'border-slate-700/50' : 'border-slate-100'}`}
+                  >
+                    <div>
+                      <div className={`text-sm font-medium ${heading}`}>
+                        {new Date(e.earnings_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        {e.fiscal_quarter && (
+                          <span className={`text-[10px] font-mono ${muted}`}>{e.fiscal_quarter}</span>
+                        )}
+                        {e.estimate_eps != null && (
+                          <span className={`text-[10px] ${muted}`}>
+                            EPS Est: <span className="text-green-500 font-medium">${e.estimate_eps}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-1 rounded-md ${
+                      isPast
+                        ? dark ? 'bg-slate-700 text-slate-500' : 'bg-slate-100 text-slate-400'
+                        : label === 'Tomorrow'
+                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                          : 'bg-green-500/10 text-green-500 border border-green-500/20'
+                    }`}>
+                      {isPast ? 'Reported' : label}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

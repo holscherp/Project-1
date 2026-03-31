@@ -156,7 +156,7 @@ router.get('/:symbol/price', async (req, res) => {
     const range = req.query.range || '1m';
 
     if (!FINNHUB_API_KEY) {
-      return res.json({ current: null, history: [], yearHigh: null, yearLow: null });
+      return res.json({ current: null, history: [], rangeHigh: null, rangeLow: null });
     }
 
     // Fetch quote (current price + daily change)
@@ -202,11 +202,10 @@ router.get('/:symbol/price', async (req, res) => {
       });
     }
 
-    // Compute 52-week high/low with dates when range=1y
-    let yearHigh = null;
-    let yearLow = null;
-    if (range === '1y' && history.length > 0) {
-      // Use the high[] and low[] arrays if available for accuracy
+    // Compute range high/low with dates for all ranges
+    let rangeHigh = null;
+    let rangeLow = null;
+    if (history.length > 0 && candles.t) {
       const highs = candles.h || candles.c;
       const lows = candles.l || candles.c;
 
@@ -223,14 +222,14 @@ router.get('/:symbol/price', async (req, res) => {
       const fmtDate = (ts) =>
         new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-      yearHigh = { price: maxPrice, date: fmtDate(candles.t[maxIdx]) };
-      yearLow  = { price: minPrice, date: fmtDate(candles.t[minIdx]) };
+      rangeHigh = { price: maxPrice, date: fmtDate(candles.t[maxIdx]) };
+      rangeLow  = { price: minPrice, date: fmtDate(candles.t[minIdx]) };
     }
 
-    res.json({ current, history, yearHigh, yearLow });
+    res.json({ current, history, rangeHigh, rangeLow });
   } catch (err) {
     console.error('Error fetching price:', err);
-    res.json({ current: null, history: [], yearHigh: null, yearLow: null });
+    res.json({ current: null, history: [], rangeHigh: null, rangeLow: null });
   }
 });
 
@@ -337,11 +336,16 @@ router.get('/:symbol', (req, res) => {
       `SELECT * FROM earnings WHERE ticker = ? AND earnings_date >= date('now') ORDER BY earnings_date ASC LIMIT 1`
     ).get(upperSymbol);
 
+    const allEarnings = db.prepare(
+      `SELECT * FROM earnings WHERE ticker = ? ORDER BY earnings_date DESC LIMIT 20`
+    ).all(upperSymbol);
+
     res.json({
       ticker,
       articles,
       filings,
       earnings: earnings || null,
+      allEarnings,
     });
   } catch (err) {
     console.error('Error fetching ticker:', err);

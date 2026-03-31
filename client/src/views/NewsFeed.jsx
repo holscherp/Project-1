@@ -19,8 +19,9 @@ export default function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [emptyWatchlist, setEmptyWatchlist] = useState(false);
+  const [emptyPortfolio, setEmptyPortfolio] = useState(false);
   const [filters, setFilters] = useState({ ticker: '', source_type: '', search: '' });
-  const [activeTab, setActiveTab] = useState('watchlist'); // 'watchlist' | 'market'
+  const [activeTab, setActiveTab] = useState('watchlist'); // 'watchlist' | 'market' | 'portfolio'
 
   const [digest, setDigest] = useState([]);
   const [digestLoading, setDigestLoading] = useState(false);
@@ -30,6 +31,7 @@ export default function NewsFeed() {
     setLoading(true);
     setError(null);
     setEmptyWatchlist(false);
+    setEmptyPortfolio(false);
     try {
       const params = new URLSearchParams({ page: page.toString(), limit: '30', tab: activeTab });
       if (filters.ticker) params.set('ticker', filters.ticker);
@@ -41,6 +43,7 @@ export default function NewsFeed() {
       setArticles(data.articles);
       setTotal(data.total);
       if (data.empty_watchlist) setEmptyWatchlist(true);
+      if (data.empty_portfolio) setEmptyPortfolio(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -135,6 +138,16 @@ export default function NewsFeed() {
           }`}
         >
           Market News
+        </button>
+        <button
+          onClick={() => handleTabChange('portfolio')}
+          className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
+            activeTab === 'portfolio'
+              ? dark ? 'bg-slate-700 text-white' : 'bg-white text-slate-900 shadow-sm'
+              : dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Portfolio
         </button>
       </div>
 
@@ -254,6 +267,25 @@ export default function NewsFeed() {
             }`}
           >
             Go to Watchlist →
+          </button>
+        </div>
+      ) : emptyPortfolio && !hasActiveFilters ? (
+        <div className="text-center py-16">
+          <p className={`text-sm font-medium mb-2 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>
+            Your portfolio is empty
+          </p>
+          <p className={`text-xs mb-5 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+            Add positions to your portfolio to see relevant news here.
+          </p>
+          <button
+            onClick={() => navigate('/portfolio')}
+            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+              dark
+                ? 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+          >
+            Go to Portfolio →
           </button>
         </div>
       ) : articles.length === 0 ? (

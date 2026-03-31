@@ -38,6 +38,19 @@ router.get('/', requireAuth, (req, res) => {
       params.push(...watchlistSymbols);
     }
 
+    if (tab === 'portfolio') {
+      const rows = db.prepare(
+        'SELECT ticker_symbol FROM user_portfolio_positions WHERE user_id = ?'
+      ).all(req.user.id);
+      const portfolioSymbols = rows.map(r => r.ticker_symbol);
+      if (portfolioSymbols.length === 0) {
+        return res.json({ articles: [], total: 0, page, limit, empty_portfolio: true });
+      }
+      const likeConditions = portfolioSymbols.map(() => `tickers LIKE '%"' || ? || '"%'`).join(' OR ');
+      conditions.push(`(${likeConditions})`);
+      params.push(...portfolioSymbols);
+    }
+
     if (tab === 'market') {
       // Only news and filing source types
       conditions.push(`source_type IN ('news', 'filing')`);
