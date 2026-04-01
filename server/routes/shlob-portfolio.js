@@ -121,6 +121,19 @@ router.get('/trades', requireAuth, (req, res) => {
   }
 });
 
+// GET /snapshots — Portfolio value history for charts
+router.get('/snapshots', requireAuth, (req, res) => {
+  try {
+    const rows = db.prepare(
+      'SELECT recorded_at, total_value, cash_balance, positions_json FROM shlob_snapshots ORDER BY recorded_at ASC'
+    ).all();
+    res.json({ snapshots: rows.map(r => ({ ...r, positions: JSON.parse(r.positions_json) })) });
+  } catch (err) {
+    console.error('[shlob-portfolio] snapshots GET error:', err);
+    res.status(500).json({ error: 'Failed to fetch snapshots' });
+  }
+});
+
 // POST /analyze — Trigger a manual analysis run
 let isAnalyzing = false;
 router.post('/analyze', requireAuth, async (req, res) => {

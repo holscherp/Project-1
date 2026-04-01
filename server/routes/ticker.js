@@ -165,7 +165,7 @@ router.get('/:symbol/price', async (req, res) => {
     };
     const { yahooRange, interval } = rangeMap[range] || rangeMap['1m'];
 
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
       `?interval=${interval}&range=${yahooRange}&includePrePost=false`;
 
     const response = await fetch(url, {
