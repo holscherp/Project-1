@@ -248,7 +248,8 @@ function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS shlob_portfolio (
-      id INTEGER PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT REFERENCES users(id),
       cash_balance REAL NOT NULL DEFAULT 15000.0,
       starting_capital REAL NOT NULL DEFAULT 15000.0,
       last_analysis_at TEXT,
@@ -257,16 +258,19 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS shlob_positions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ticker_symbol TEXT NOT NULL UNIQUE,
+      user_id TEXT REFERENCES users(id),
+      ticker_symbol TEXT NOT NULL,
       shares REAL NOT NULL,
       avg_cost_per_share REAL NOT NULL,
       position_type TEXT NOT NULL CHECK(position_type IN ('long', 'short')),
       opened_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      UNIQUE(user_id, ticker_symbol)
     );
 
     CREATE TABLE IF NOT EXISTS shlob_trades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT REFERENCES users(id),
       ticker_symbol TEXT NOT NULL,
       action TEXT NOT NULL CHECK(action IN ('buy', 'sell', 'short', 'cover')),
       quantity REAL NOT NULL,
@@ -447,11 +451,44 @@ function initDb() {
   insertSetting.run('last_updated', null);
   insertSetting.run('theme', 'dark');
 
-  // -- Shlob's portfolio (singleton row, only inserted once) --
-  db.prepare(`
-    INSERT OR IGNORE INTO shlob_portfolio (id, cash_balance, starting_capital, created_at)
-    VALUES (1, 15000.0, 15000.0, ?)
-  `).run(now);
+  // ── Shlob Per-User Migration ──────────────────────────────────────────
+  // Add user_id to shlob_portfolio if this is an existing install
+  try { db.exec('ALTER TABLE shlob_portfolio ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch {}
+  // Add user_id to shlob_trades if this is an existing install
+  try { db.exec('ALTER TABLE shlob_trades ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch {}
+
+  // Rebuild shlob_positions if user_id column is absent (need to change UNIQUE constraint)
+  const posColumns = db.prepare('PRAGMA table_info(shlob_positions)').all();
+  if (!posColumns.some(c => c.name === 'user_id')) {
+    db.exec(`CREATE TABLE IF NOT EXISTS shlob_positions_migration (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT REFERENCES users(id),
+      ticker_symbol TEXT NOT NULL,
+      shares REAL NOT NULL,
+      avg_cost_per_share REAL NOT NULL,
+      position_type TEXT NOT NULL CHECK(position_type IN ('long', 'short')),
+      opened_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(user_id, ticker_symbol)
+    )`);
+    db.exec(`INSERT INTO shlob_positions_migration
+      (id, ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at)
+      SELECT id, ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at
+      FROM shlob_positions`);
+    db.exec('DROP TABLE shlob_positions');
+    db.exec('ALTER TABLE shlob_positions_migration RENAME TO shlob_positions');
+  }
+
+  // Create the index only after user_id column is guaranteed to exist
+  db.exec('CREATE INDEX IF NOT EXISTS idx_shlob_trades_user ON shlob_trades(user_id, executed_at)');
+
+  // Assign any pre-migration rows (user_id IS NULL) to the oldest user
+  const firstUser = db.prepare('SELECT id FROM users ORDER BY created_at ASC LIMIT 1').get();
+  if (firstUser) {
+    db.prepare('UPDATE shlob_portfolio SET user_id = ? WHERE user_id IS NULL').run(firstUser.id);
+    db.prepare('UPDATE shlob_positions SET user_id = ? WHERE user_id IS NULL').run(firstUser.id);
+    db.prepare('UPDATE shlob_trades SET user_id = ? WHERE user_id IS NULL').run(firstUser.id);
+  }
 
   return db;
 }

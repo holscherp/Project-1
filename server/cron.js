@@ -330,10 +330,17 @@ export function startCron() {
     runDailySummaryJob();
   });
 
-  // Shlob autonomous trading — every 2 hours
-  cron.schedule('0 */2 * * *', () => {
+  // Shlob autonomous trading — every 2 hours, runs for every registered user
+  cron.schedule('0 */2 * * *', async () => {
     console.log('[Cron] Shlob trading analysis triggered');
-    runShlobTrader('cron').catch(err => console.error('[ShlobTrader] Cron error:', err));
+    const users = db.prepare('SELECT id FROM users ORDER BY created_at ASC').all();
+    for (const user of users) {
+      try {
+        await runShlobTrader('cron', user.id);
+      } catch (err) {
+        console.error(`[ShlobTrader] Cron error for user ${user.id}:`, err);
+      }
+    }
   });
 
   // Run initial fetch after 10 seconds to let server start up

@@ -26,7 +26,7 @@ async function fetchQuote(symbol) {
   // Fallback: Yahoo Finance v8 API (free, no key)
   try {
     const res = await fetch(
-      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
     );
     if (res.ok) {
@@ -38,25 +38,27 @@ async function fetchQuote(symbol) {
   return null;
 }
 
-function ensurePortfolioExists() {
-  const existing = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+function ensurePortfolioExists(userId) {
+  const existing = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
   if (!existing) {
     db.prepare(
-      'INSERT INTO shlob_portfolio (id, cash_balance, starting_capital, created_at) VALUES (1, 15000.0, 15000.0, ?)'
-    ).run(new Date().toISOString());
+      'INSERT INTO shlob_portfolio (user_id, cash_balance, starting_capital, created_at) VALUES (?, 15000.0, 15000.0, ?)'
+    ).run(userId, new Date().toISOString());
   }
-  return db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+  return db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
 }
 
-// Execute a single validated trade (DB writes in a transaction)
-const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reasoning, triggeredBy) => {
-  const portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+// Execute a single validated trade (DB writes in a transaction), scoped to userId
+const _executeTradeTxn = db.transaction((userId, ticker, action, quantity, price, reasoning, triggeredBy) => {
+  const portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
   if (!portfolio) throw new Error('Portfolio not initialized');
 
   const sym = ticker.toUpperCase();
   const qty = Math.abs(quantity);
   const totalCost = qty * price;
-  const existingPos = db.prepare('SELECT * FROM shlob_positions WHERE ticker_symbol = ?').get(sym);
+  const existingPos = db.prepare(
+    'SELECT * FROM shlob_positions WHERE user_id = ? AND ticker_symbol = ?'
+  ).get(userId, sym);
 
   let newCashBalance;
 
@@ -72,12 +74,12 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
       const newShares = existingPos.shares + qty;
       const newAvg = (existingPos.avg_cost_per_share * existingPos.shares + price * qty) / newShares;
       db.prepare(
-        'UPDATE shlob_positions SET shares = ?, avg_cost_per_share = ?, updated_at = ? WHERE ticker_symbol = ?'
-      ).run(newShares, newAvg, new Date().toISOString(), sym);
+        'UPDATE shlob_positions SET shares = ?, avg_cost_per_share = ?, updated_at = ? WHERE user_id = ? AND ticker_symbol = ?'
+      ).run(newShares, newAvg, new Date().toISOString(), userId, sym);
     } else {
       db.prepare(
-        'INSERT INTO shlob_positions (ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(sym, qty, price, 'long', new Date().toISOString(), new Date().toISOString());
+        'INSERT INTO shlob_positions (user_id, ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, sym, qty, price, 'long', new Date().toISOString(), new Date().toISOString());
     }
 
   } else if (action === 'sell') {
@@ -90,11 +92,11 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
     newCashBalance = portfolio.cash_balance + totalCost;
     const remaining = existingPos.shares - qty;
     if (remaining < 0.0001) {
-      db.prepare('DELETE FROM shlob_positions WHERE ticker_symbol = ?').run(sym);
+      db.prepare('DELETE FROM shlob_positions WHERE user_id = ? AND ticker_symbol = ?').run(userId, sym);
     } else {
       db.prepare(
-        'UPDATE shlob_positions SET shares = ?, updated_at = ? WHERE ticker_symbol = ?'
-      ).run(remaining, new Date().toISOString(), sym);
+        'UPDATE shlob_positions SET shares = ?, updated_at = ? WHERE user_id = ? AND ticker_symbol = ?'
+      ).run(remaining, new Date().toISOString(), userId, sym);
     }
 
   } else if (action === 'short') {
@@ -109,12 +111,12 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
       const newShares = Math.abs(existingPos.shares) + qty;
       const newAvg = (existingPos.avg_cost_per_share * Math.abs(existingPos.shares) + price * qty) / newShares;
       db.prepare(
-        'UPDATE shlob_positions SET shares = ?, avg_cost_per_share = ?, updated_at = ? WHERE ticker_symbol = ?'
-      ).run(-newShares, newAvg, new Date().toISOString(), sym);
+        'UPDATE shlob_positions SET shares = ?, avg_cost_per_share = ?, updated_at = ? WHERE user_id = ? AND ticker_symbol = ?'
+      ).run(-newShares, newAvg, new Date().toISOString(), userId, sym);
     } else {
       db.prepare(
-        'INSERT INTO shlob_positions (ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(sym, -qty, price, 'short', new Date().toISOString(), new Date().toISOString());
+        'INSERT INTO shlob_positions (user_id, ticker_symbol, shares, avg_cost_per_share, position_type, opened_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, sym, -qty, price, 'short', new Date().toISOString(), new Date().toISOString());
     }
 
   } else if (action === 'cover') {
@@ -130,11 +132,11 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
     newCashBalance = portfolio.cash_balance + cashChange;
     const remaining = shortShares - qty;
     if (remaining < 0.0001) {
-      db.prepare('DELETE FROM shlob_positions WHERE ticker_symbol = ?').run(sym);
+      db.prepare('DELETE FROM shlob_positions WHERE user_id = ? AND ticker_symbol = ?').run(userId, sym);
     } else {
       db.prepare(
-        'UPDATE shlob_positions SET shares = ?, updated_at = ? WHERE ticker_symbol = ?'
-      ).run(-remaining, new Date().toISOString(), sym);
+        'UPDATE shlob_positions SET shares = ?, updated_at = ? WHERE user_id = ? AND ticker_symbol = ?'
+      ).run(-remaining, new Date().toISOString(), userId, sym);
     }
 
   } else {
@@ -142,13 +144,13 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
   }
 
   db.prepare(
-    'UPDATE shlob_portfolio SET cash_balance = ?, last_analysis_at = ? WHERE id = 1'
-  ).run(newCashBalance, new Date().toISOString());
+    'UPDATE shlob_portfolio SET cash_balance = ?, last_analysis_at = ? WHERE user_id = ?'
+  ).run(newCashBalance, new Date().toISOString(), userId);
 
   const tradeResult = db.prepare(`
-    INSERT INTO shlob_trades (ticker_symbol, action, quantity, price, total_cost, cash_balance_after, reasoning, triggered_by, executed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(sym, action, qty, price, totalCost, newCashBalance, reasoning || '', triggeredBy, new Date().toISOString());
+    INSERT INTO shlob_trades (user_id, ticker_symbol, action, quantity, price, total_cost, cash_balance_after, reasoning, triggered_by, executed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(userId, sym, action, qty, price, totalCost, newCashBalance, reasoning || '', triggeredBy, new Date().toISOString());
 
   return { id: tradeResult.lastInsertRowid, cash_balance_after: newCashBalance };
 });
@@ -157,7 +159,8 @@ const _executeTradeTxn = db.transaction((ticker, action, quantity, price, reason
  * Execute a single trade for Shlob (fetches live price, validates, executes).
  * Returns { success, trade } or throws on validation error.
  */
-export async function executeShlobTrade(ticker, action, quantity, reasoning, triggeredBy = 'manual') {
+export async function executeShlobTrade(ticker, action, quantity, reasoning, triggeredBy = 'manual', userId) {
+  if (!userId) throw new Error('userId is required for executeShlobTrade');
   const sym = ticker.toUpperCase();
   const qty = Math.abs(quantity);
 
@@ -167,28 +170,38 @@ export async function executeShlobTrade(ticker, action, quantity, reasoning, tri
   const price = await fetchQuote(sym);
   if (!price || price <= 0) throw new Error(`Cannot fetch live price for ${sym}`);
 
-  const result = _executeTradeTxn(sym, action, qty, price, reasoning, triggeredBy);
+  const result = _executeTradeTxn(userId, sym, action, qty, price, reasoning, triggeredBy);
   return { success: true, ticker: sym, action, quantity: qty, price, trade_id: result.id };
 }
 
-let isRunning = false;
+// Per-user lock: prevents concurrent analysis runs for the same user
+const runningUsers = new Set();
 
 /**
  * Full autonomous analysis cycle: gather context, call Claude, execute trades.
- * userId scopes the tradeable universe to that user's watchlist + portfolio only.
+ * userId scopes the tradeable universe and portfolio to that user.
  * If no userId provided, falls back to the first user in the DB (for cron).
  */
 export async function runShlobTrader(triggeredBy = 'cron', userId = null) {
-  if (isRunning) {
-    console.log('[ShlobTrader] Already running, skipping');
-    return { trades: [], skipped: true };
-  }
   if (!anthropic) {
     console.warn('[ShlobTrader] Anthropic not configured');
     return { trades: [], error: 'Anthropic not configured' };
   }
 
-  isRunning = true;
+  // Resolve userId early so we can check the per-user lock
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    const firstUser = db.prepare('SELECT id FROM users ORDER BY created_at ASC LIMIT 1').get();
+    if (!firstUser) return { trades: [], overall_notes: 'No users in DB.' };
+    resolvedUserId = firstUser.id;
+  }
+
+  if (runningUsers.has(resolvedUserId)) {
+    console.log(`[ShlobTrader] Already running for user ${resolvedUserId}, skipping`);
+    return { trades: [], skipped: true };
+  }
+  runningUsers.add(resolvedUserId);
+
   const startedAt = new Date().toISOString();
   const logResult = db.prepare(
     'INSERT INTO job_log (job_type, status, message, started_at) VALUES (?, ?, ?, ?)'
@@ -196,21 +209,8 @@ export async function runShlobTrader(triggeredBy = 'cron', userId = null) {
   const jobLogId = logResult.lastInsertRowid;
 
   try {
-    const portfolio = ensurePortfolioExists();
-    const positions = db.prepare('SELECT * FROM shlob_positions').all();
-
-    // Resolve userId — fall back to first user in DB (for cron runs)
-    let resolvedUserId = userId;
-    if (!resolvedUserId) {
-      const firstUser = db.prepare('SELECT id FROM users ORDER BY created_at ASC LIMIT 1').get();
-      if (!firstUser) {
-        db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
-        db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')
-          .run('completed', 'No users found — skipping', new Date().toISOString(), jobLogId);
-        return { trades: [], overall_notes: 'No users in DB.' };
-      }
-      resolvedUserId = firstUser.id;
-    }
+    const portfolio = ensurePortfolioExists(resolvedUserId);
+    const positions = db.prepare('SELECT * FROM shlob_positions WHERE user_id = ?').all(resolvedUserId);
 
     // Gather tradeable universe: ONLY this user's watchlist + portfolio tickers
     const watchlistRows = db.prepare(`
@@ -231,7 +231,7 @@ export async function runShlobTrader(triggeredBy = 'cron', userId = null) {
     const allTickers = Array.from(tickerMap.values());
 
     if (allTickers.length === 0) {
-      db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
+      db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE user_id = ?').run(new Date().toISOString(), resolvedUserId);
       db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')
         .run('completed', 'No tradeable tickers — skipping', new Date().toISOString(), jobLogId);
       return { trades: [], overall_notes: 'No tradeable tickers in any user watchlist.' };
@@ -286,8 +286,8 @@ export async function runShlobTrader(triggeredBy = 'cron', userId = null) {
       ).all(...allSymbols);
     }
     const recentTrades = db.prepare(
-      'SELECT * FROM shlob_trades ORDER BY executed_at DESC LIMIT 15'
-    ).all();
+      'SELECT * FROM shlob_trades WHERE user_id = ? ORDER BY executed_at DESC LIMIT 15'
+    ).all(resolvedUserId);
 
     // Build portfolio state string for prompt
     const positionLines = positions.map(p => {
@@ -393,7 +393,7 @@ If portfolio is already fully invested and no better opportunities exist: {"deci
       console.error('[ShlobTrader] Failed to parse response:', rawText.substring(0, 300));
       db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')
         .run('failed', `JSON parse error: ${parseErr.message}`, new Date().toISOString(), jobLogId);
-      db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
+      db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE user_id = ?').run(new Date().toISOString(), resolvedUserId);
       return { trades: [], error: 'Failed to parse Claude response' };
     }
 
@@ -424,8 +424,7 @@ If portfolio is already fully invested and no better opportunities exist: {"deci
       }
 
       try {
-        const currentPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
-        const result = _executeTradeTxn(sym, action, qty, fillPrice, reasoning || '', triggeredBy);
+        const result = _executeTradeTxn(resolvedUserId, sym, action, qty, fillPrice, reasoning || '', triggeredBy);
         executedTrades.push({ ticker: sym, action, quantity: qty, price: fillPrice, reasoning: reasoning || '' });
         console.log(`[ShlobTrader] ${action.toUpperCase()} ${qty} ${sym} @ $${fillPrice.toFixed(2)} | Cash after: $${result.cash_balance_after.toFixed(2)}`);
       } catch (tradeErr) {
@@ -434,26 +433,7 @@ If portfolio is already fully invested and no better opportunities exist: {"deci
       }
     }
 
-    db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
-
-    // Write portfolio snapshot using the live prices already fetched this cycle
-    const freshPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
-    const freshPositions = db.prepare('SELECT * FROM shlob_positions').all();
-    let snapshotTotalValue = freshPortfolio.cash_balance;
-    const positionsSnapshot = freshPositions.map(p => {
-      const cp = prices[p.ticker_symbol];
-      let posVal = p.avg_cost_per_share * Math.abs(p.shares); // fallback to cost
-      if (cp) {
-        posVal = p.position_type === 'long'
-          ? cp * p.shares
-          : (2 * p.avg_cost_per_share - cp) * Math.abs(p.shares);
-      }
-      snapshotTotalValue += posVal;
-      return { ticker: p.ticker_symbol, value: parseFloat(posVal.toFixed(2)), price: cp || p.avg_cost_per_share, shares: Math.abs(p.shares), position_type: p.position_type };
-    });
-    db.prepare(
-      'INSERT INTO shlob_snapshots (recorded_at, total_value, cash_balance, positions_json) VALUES (?, ?, ?, ?)'
-    ).run(new Date().toISOString(), parseFloat(snapshotTotalValue.toFixed(2)), freshPortfolio.cash_balance, JSON.stringify(positionsSnapshot));
+    db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE user_id = ?').run(new Date().toISOString(), resolvedUserId);
 
     const summary = `${executedTrades.length} trades executed, ${skippedTrades.length} skipped. ${overallNotes}`;
     db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')
@@ -468,6 +448,6 @@ If portfolio is already fully invested and no better opportunities exist: {"deci
       .run('failed', `Fatal: ${err.message}`, new Date().toISOString(), jobLogId);
     return { trades: [], error: err.message };
   } finally {
-    isRunning = false;
+    runningUsers.delete(resolvedUserId);
   }
 }

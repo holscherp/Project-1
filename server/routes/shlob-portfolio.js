@@ -24,18 +24,19 @@ async function fetchQuote(symbol) {
 // GET / — Shlob's full portfolio state with live P&L
 router.get('/', requireAuth, async (req, res) => {
   try {
-    let portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+    const userId = req.user.id;
+    let portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
     if (!portfolio) {
       db.prepare(
-        'INSERT OR IGNORE INTO shlob_portfolio (id, cash_balance, starting_capital, created_at) VALUES (1, 15000.0, 15000.0, ?)'
-      ).run(new Date().toISOString());
-      portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+        'INSERT INTO shlob_portfolio (user_id, cash_balance, starting_capital, created_at) VALUES (?, 15000.0, 15000.0, ?)'
+      ).run(userId, new Date().toISOString());
+      portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
     }
 
-    const positions = db.prepare('SELECT * FROM shlob_positions ORDER BY opened_at ASC').all();
+    const positions = db.prepare('SELECT * FROM shlob_positions WHERE user_id = ? ORDER BY opened_at ASC').all(userId);
     const recentTrades = db.prepare(
-      'SELECT * FROM shlob_trades ORDER BY executed_at DESC LIMIT 100'
-    ).all();
+      'SELECT * FROM shlob_trades WHERE user_id = ? ORDER BY executed_at DESC LIMIT 100'
+    ).all(userId);
 
     // Fetch live prices for all open positions in parallel
     const quotes = await Promise.all(positions.map(p => fetchQuote(p.ticker_symbol)));
@@ -105,14 +106,15 @@ router.get('/', requireAuth, async (req, res) => {
 // GET /trades — Paginated full trade history
 router.get('/trades', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(200, parseInt(req.query.limit) || 50);
     const offset = (page - 1) * limit;
 
     const trades = db.prepare(
-      'SELECT * FROM shlob_trades ORDER BY executed_at DESC LIMIT ? OFFSET ?'
-    ).all(limit, offset);
-    const { count } = db.prepare('SELECT COUNT(*) as count FROM shlob_trades').get();
+      'SELECT * FROM shlob_trades WHERE user_id = ? ORDER BY executed_at DESC LIMIT ? OFFSET ?'
+    ).all(userId, limit, offset);
+    const { count } = db.prepare('SELECT COUNT(*) as count FROM shlob_trades WHERE user_id = ?').get(userId);
 
     res.json({ trades, total: count, page, limit });
   } catch (err) {

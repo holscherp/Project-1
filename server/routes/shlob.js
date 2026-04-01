@@ -178,8 +178,10 @@ router.post('/ask', requireAuth, async (req, res) => {
     }
 
     // Include Shlob's own portfolio state so he can mirror recommendations
-    const shlobPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
-    const shlobPositions = db.prepare('SELECT * FROM shlob_positions').all();
+    const shlobPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
+    const shlobPositions = shlobPortfolio
+      ? db.prepare('SELECT * FROM shlob_positions WHERE user_id = ?').all(userId)
+      : [];
 
     let portfolioBlock = '';
     if (shlobPortfolio) {
@@ -227,7 +229,8 @@ Only include this block if you're making a genuine, conviction-backed trade. Do 
             tradeData.action,
             tradeData.quantity,
             tradeData.reasoning || 'Chat recommendation',
-            'chat'
+            'chat',
+            userId
           );
           console.log(`[Shlob] Chat-triggered trade: ${tradeData.action} ${tradeData.quantity} ${tradeData.ticker}`);
         }
@@ -265,12 +268,13 @@ router.post('/analyze', requireAuth, async (req, res) => {
 // GET /portfolio — Shlob's portfolio: positions, total value, recent trades
 router.get('/portfolio', requireAuth, async (req, res) => {
   try {
-    const portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+    const userId = req.user.id;
+    const portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE user_id = ?').get(userId);
     if (!portfolio) {
       return res.json({ portfolio: null, positions: [], trades: [], total_value: 0 });
     }
 
-    const positions = db.prepare('SELECT * FROM shlob_positions ORDER BY opened_at ASC').all();
+    const positions = db.prepare('SELECT * FROM shlob_positions WHERE user_id = ? ORDER BY opened_at ASC').all(userId);
 
     // Fetch live prices for all positions in parallel
     const priceResults = await Promise.all(positions.map(p => fetchLivePrice(p.ticker_symbol)));
@@ -330,8 +334,8 @@ router.get('/portfolio', requireAuth, async (req, res) => {
     }));
 
     const trades = db.prepare(
-      'SELECT * FROM shlob_trades ORDER BY executed_at DESC LIMIT 30'
-    ).all();
+      'SELECT * FROM shlob_trades WHERE user_id = ? ORDER BY executed_at DESC LIMIT 30'
+    ).all(userId);
 
     res.json({
       portfolio: {
