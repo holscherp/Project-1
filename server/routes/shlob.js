@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { executeShlobTrade } from '../services/shlob-trader.js';
 
 const router = Router();
 
@@ -144,6 +145,27 @@ router.post('/ask', requireAuth, async (req, res) => {
       contextParts.push(`UPCOMING EARNINGS:\n${upcomingEarnings.map(e => `- ${e.ticker}: ${e.earnings_date}${e.estimate_eps ? ` (EPS est: $${e.estimate_eps})` : ''}${e.fiscal_quarter ? ` ${e.fiscal_quarter}` : ''}`).join('\n')}`);
     }
 
+    // Include Shlob's own portfolio state so he can mirror recommendations
+    const shlobPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+    const shlobPositions = db.prepare('SELECT * FROM shlob_positions').all();
+
+    let portfolioBlock = '';
+    if (shlobPortfolio) {
+      const posLines = shlobPositions.length > 0
+        ? shlobPositions.map(p => `${p.ticker_symbol}: ${p.position_type.toUpperCase()} ${Math.abs(p.shares)} shares @ $${p.avg_cost_per_share.toFixed(2)}`).join(', ')
+        : 'none';
+      portfolioBlock = `\n\nYOUR OWN TRADING PORTFOLIO (you manage this autonomously):
+Cash: $${shlobPortfolio.cash_balance.toFixed(2)} | Positions: ${posLines}
+
+If your response includes a specific trade recommendation (buy/sell/short/cover a stock) AND executing that trade would genuinely benefit your portfolio given current conditions, append EXACTLY this block at the very end of your response (no text after it):
+
+<<<SHLOB_TRADE>>>
+{"ticker":"SYMBOL","action":"buy|sell|short|cover","quantity":N,"reasoning":"brief reason"}
+<<<END_SHLOB_TRADE>>>
+
+Only include this block if you're making a genuine, conviction-backed trade. Do not force it.`;
+    }
+
     const contextBlock = contextParts.length > 0
       ? `\n\nHere is the current data from the user's Meridian dashboard:\n\n${contextParts.join('\n\n')}`
       : '\n\nNo data is currently available in the dashboard.';
@@ -151,13 +173,36 @@ router.post('/ask', requireAuth, async (req, res) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system: SYSTEM_PROMPT + contextBlock,
+      system: SYSTEM_PROMPT + contextBlock + portfolioBlock,
       messages: [{ role: 'user', content: question.trim() }],
     });
 
-    const answer = response.content?.[0]?.type === 'text'
+    let answer = response.content?.[0]?.type === 'text'
       ? response.content[0].text
       : 'No response generated.';
+
+    // Parse and execute any trade recommendation Shlob embedded
+    const tradeMatch = answer.match(/<<<SHLOB_TRADE>>>([\s\S]*?)<<<END_SHLOB_TRADE>>>/);
+    if (tradeMatch) {
+      // Strip the block from the answer shown to the user
+      answer = answer.replace(/\n?<<<SHLOB_TRADE>>>[\s\S]*?<<<END_SHLOB_TRADE>>>/, '').trim();
+
+      try {
+        const tradeData = JSON.parse(tradeMatch[1].trim());
+        if (tradeData.ticker && tradeData.action && tradeData.quantity > 0) {
+          await executeShlobTrade(
+            tradeData.ticker,
+            tradeData.action,
+            tradeData.quantity,
+            tradeData.reasoning || 'Chat recommendation',
+            'chat'
+          );
+          console.log(`[Shlob] Chat-triggered trade: ${tradeData.action} ${tradeData.quantity} ${tradeData.ticker}`);
+        }
+      } catch (tradeErr) {
+        console.warn('[Shlob] Chat trade execution failed:', tradeErr.message);
+      }
+    }
 
     const uses_remaining = Math.max(0, RATE_LIMIT - (usageRows.length + 1));
     const updatedRows = db.prepare(

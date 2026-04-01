@@ -246,6 +246,37 @@ function initDb() {
       news_count INTEGER NOT NULL DEFAULT 0,
       generated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS shlob_portfolio (
+      id INTEGER PRIMARY KEY,
+      cash_balance REAL NOT NULL DEFAULT 15000.0,
+      starting_capital REAL NOT NULL DEFAULT 15000.0,
+      last_analysis_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS shlob_positions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticker_symbol TEXT NOT NULL UNIQUE,
+      shares REAL NOT NULL,
+      avg_cost_per_share REAL NOT NULL,
+      position_type TEXT NOT NULL CHECK(position_type IN ('long', 'short')),
+      opened_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS shlob_trades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticker_symbol TEXT NOT NULL,
+      action TEXT NOT NULL CHECK(action IN ('buy', 'sell', 'short', 'cover')),
+      quantity REAL NOT NULL,
+      price REAL NOT NULL,
+      total_cost REAL NOT NULL,
+      cash_balance_after REAL NOT NULL,
+      reasoning TEXT,
+      triggered_by TEXT NOT NULL DEFAULT 'cron',
+      executed_at TEXT NOT NULL
+    );
   `);
 
   // ── Seed Data ──────────────────────────────────────────────────────────
@@ -405,6 +436,12 @@ function initDb() {
 
   insertSetting.run('last_updated', null);
   insertSetting.run('theme', 'dark');
+
+  // -- Shlob's portfolio (singleton row, only inserted once) --
+  db.prepare(`
+    INSERT OR IGNORE INTO shlob_portfolio (id, cash_balance, starting_capital, created_at)
+    VALUES (1, 15000.0, 15000.0, ?)
+  `).run(now);
 
   return db;
 }

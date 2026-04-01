@@ -6,6 +6,7 @@ import { fetchRSSNews } from './services/rss.js';
 import { fetchSECFilings } from './services/sec.js';
 import { fetchSocialPosts } from './services/social.js';
 import { summarizeArticle, generateDailyTickerSummary } from './services/summarizer.js';
+import { runShlobTrader } from './services/shlob-trader.js';
 
 let isRunning = false;
 
@@ -327,6 +328,12 @@ export function startCron() {
   cron.schedule('0 6 * * *', () => {
     console.log('[Cron] Daily summary job triggered');
     runDailySummaryJob();
+  });
+
+  // Shlob autonomous trading — every 2 hours
+  cron.schedule('0 */2 * * *', () => {
+    console.log('[Cron] Shlob trading analysis triggered');
+    runShlobTrader('cron').catch(err => console.error('[ShlobTrader] Cron error:', err));
   });
 
   // Run initial fetch after 10 seconds to let server start up

@@ -21,6 +21,7 @@ import friendsRoutes from './routes/friends.js';
 import messagesRoutes from './routes/messages.js';
 import portfolioRoutes from './routes/portfolio.js';
 import digestRoutes from './routes/digest.js';
+import shlobPortfolioRoutes from './routes/shlob-portfolio.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +78,7 @@ app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/shlob', shlobRoutes);
+app.use('/api/shlob-portfolio', shlobPortfolioRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/digest', digestRoutes);
 

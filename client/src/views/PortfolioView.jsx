@@ -5,6 +5,7 @@ import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
 import TickerChip from '../components/TickerChip.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
+import ShlobPortfolio from '../components/ShlobPortfolio.jsx';
 import {
   ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis, Brush,
 } from 'recharts';
@@ -444,6 +445,9 @@ export default function PortfolioView() {
   return (
     <div className="space-y-8">
       <h1 className={`text-sm font-bold uppercase tracking-wider ${heading}`}>Portfolio</h1>
+
+      {/* ── Shlob's Autonomous Portfolio ── */}
+      <ShlobPortfolio />
 
       {/* ── Summary card ── */}
       <section className={`rounded-lg border p-6 ${cardBg}`}>
