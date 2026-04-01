@@ -6,16 +6,18 @@ import TickerChip from '../components/TickerChip.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 import {
-  ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis,
+  ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis, Brush,
 } from 'recharts';
 
 // ── Price Chart ────────────────────────────────────────────────────────────────
 
 const RANGES = [
-  { key: '1d', label: '1D' },
-  { key: '1w', label: '1W' },
-  { key: '1m', label: '1M' },
-  { key: '1y', label: '1Y' },
+  { key: '1d',  label: '1D' },
+  { key: '1w',  label: '1W' },
+  { key: '1m',  label: '1M' },
+  { key: '3m',  label: '3M' },
+  { key: '1y',  label: '1Y' },
+  { key: 'all', label: 'ALL' },
 ];
 
 function PriceChart({ symbol, dark }) {
@@ -80,7 +82,7 @@ function PriceChart({ symbol, dark }) {
           No intraday data available
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={96}>
+        <ResponsiveContainer width="100%" height={136}>
           <AreaChart data={history} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={`pg-${symbol}-${isPositive ? 'up' : 'dn'}`} x1="0" y1="0" x2="0" y2="1">
@@ -98,6 +100,7 @@ function PriceChart({ symbol, dark }) {
                 fontSize: '11px',
                 fontFamily: 'var(--font-mono)',
               }}
+              labelFormatter={(label) => label}
               formatter={(val) => [`$${Number(val).toFixed(2)}`, 'Price']}
             />
             <Area
@@ -107,6 +110,14 @@ function PriceChart({ symbol, dark }) {
               strokeWidth={1.5}
               fill={`url(#pg-${symbol}-${isPositive ? 'up' : 'dn'})`}
               dot={false}
+            />
+            <Brush
+              dataKey="date"
+              height={20}
+              stroke={dark ? '#334155' : '#e2e8f0'}
+              fill={dark ? '#1e293b' : '#f8fafc'}
+              travellerWidth={6}
+              tick={{ fontSize: 8, fill: dark ? '#64748b' : '#94a3b8', fontFamily: 'var(--font-mono)' }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -142,7 +153,7 @@ function PriceChart({ symbol, dark }) {
 // ── Position Card ──────────────────────────────────────────────────────────────
 
 function PositionCard({ position, totalValue, dark, onRemove, onEdit }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editShares, setEditShares] = useState(String(position.shares));
   const [editCost, setEditCost] = useState(

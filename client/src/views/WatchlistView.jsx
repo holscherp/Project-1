@@ -1,10 +1,62 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useApi, apiPost, apiDelete } from '../hooks/useApi.js';
 import TickerChip from '../components/TickerChip.jsx';
 import TickerAutocomplete from '../components/TickerAutocomplete.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
+import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
+
+// ── Sparkline ──────────────────────────────────────────────────────────────────
+
+function Sparkline({ symbol, dark }) {
+  const [history, setHistory] = useState([]);
+  const [isPositive, setIsPositive] = useState(true);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetch(`/api/ticker/${symbol}/price?range=1m`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.history?.length) return;
+        setHistory(d.history);
+        setIsPositive(d.history[d.history.length - 1].price >= d.history[0].price);
+      })
+      .catch(() => {});
+  }, [symbol]);
+
+  if (!history.length) return <div className="h-10" />;
+
+  const color = isPositive ? '#16a34a' : '#dc2626';
+  const gradId = `spark-${symbol}-${isPositive ? 'up' : 'dn'}`;
+
+  return (
+    <div className="h-10 mt-2">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={history} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.2} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <YAxis domain={['dataMin', 'dataMax']} hide />
+          <Area
+            type="monotone"
+            dataKey="price"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={`url(#${gradId})`}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 export default function WatchlistView() {
   const { theme } = useTheme();
@@ -125,16 +177,19 @@ export default function WatchlistView() {
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {tickers.map(t => (
-            <div key={t.symbol} className={`flex items-center gap-3 p-3 rounded-lg ${dark ? 'bg-slate-800/80' : 'bg-slate-50'}`}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <TickerChip symbol={t.symbol} />
-                  <span className={`text-sm truncate ${heading}`}>{t.name}</span>
+            <div key={t.symbol} className={`p-3 rounded-lg ${dark ? 'bg-slate-800/80' : 'bg-slate-50'}`}>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <TickerChip symbol={t.symbol} />
+                    <span className={`text-sm truncate ${heading}`}>{t.name}</span>
+                  </div>
+                  <p className={`text-[10px] truncate ${muted}`}>{t.sector}</p>
                 </div>
-                <p className={`text-[10px] truncate ${muted}`}>{t.sector}</p>
+                <button onClick={() => { if (confirm(`Remove ${t.symbol}?`)) apiDelete(`/api/watchlist/tickers/${t.symbol}`).then(refetch); }}
+                  className={`p-1 rounded ${muted} hover:text-accent-red transition-colors shrink-0`}><XIcon /></button>
               </div>
-              <button onClick={() => { if (confirm(`Remove ${t.symbol}?`)) apiDelete(`/api/watchlist/tickers/${t.symbol}`).then(refetch); }}
-                className={`p-1 rounded ${muted} hover:text-accent-red transition-colors`}><XIcon /></button>
+              <Sparkline symbol={t.symbol} dark={dark} />
             </div>
           ))}
         </div>

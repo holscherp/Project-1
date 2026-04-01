@@ -6,15 +6,17 @@ import TickerChip from '../components/TickerChip.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
-import { ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, Tooltip, YAxis, XAxis, Brush } from 'recharts';
 
 // ── Price Chart ───────────────────────────────────────────────────────────────
 
 const RANGES = [
-  { label: '24H', value: '1d' },
+  { label: '1D',  value: '1d' },
   { label: '1W',  value: '1w' },
   { label: '1M',  value: '1m' },
+  { label: '3M',  value: '3m' },
   { label: '1Y',  value: '1y' },
+  { label: 'ALL', value: 'all' },
 ];
 
 function PriceChart({ symbol, dark, onPriceLoaded }) {
@@ -88,7 +90,7 @@ function PriceChart({ symbol, dark, onPriceLoaded }) {
       ) : history.length === 0 ? (
         <div className={`h-[120px] flex items-center justify-center text-xs ${muted}`}>No data available</div>
       ) : (
-        <ResponsiveContainer width="100%" height={120}>
+        <ResponsiveContainer width="100%" height={160}>
           <AreaChart data={history} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -112,8 +114,8 @@ function PriceChart({ symbol, dark, onPriceLoaded }) {
                 fontSize: '11px',
                 fontFamily: 'var(--font-mono)',
               }}
-              labelFormatter={(i) => history[i]?.date || ''}
-              formatter={(val) => [`$${val.toFixed(2)}`, 'Price']}
+              labelFormatter={(label) => label}
+              formatter={(val) => [`$${Number(val).toFixed(2)}`, 'Price']}
             />
             <Area
               type="monotone"
@@ -123,6 +125,14 @@ function PriceChart({ symbol, dark, onPriceLoaded }) {
               fill={`url(#${gradId})`}
               dot={false}
               activeDot={{ r: 3, fill: color }}
+            />
+            <Brush
+              dataKey="date"
+              height={20}
+              stroke={dark ? '#334155' : '#e2e8f0'}
+              fill={dark ? '#1e293b' : '#f8fafc'}
+              travellerWidth={6}
+              tick={{ fontSize: 8, fill: dark ? '#64748b' : '#94a3b8', fontFamily: 'var(--font-mono)' }}
             />
           </AreaChart>
         </ResponsiveContainer>

@@ -3,6 +3,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import yahooFinance from 'yahoo-finance2';
 import db from '../db.js';
 
+// Suppress yahoo-finance2 validation noise — v3+ throws by default on minor schema drift
+yahooFinance.setGlobalConfig({
+  validation: { logErrors: false, logOptionsErrors: false },
+});
+
 const router = Router();
 
 let anthropic;
@@ -168,10 +173,19 @@ router.get('/:symbol/price', async (req, res) => {
       const d = new Date(now);
       d.setDate(d.getDate() - 7);
       period1 = d;
+    } else if (range === '3m') {
+      interval = '1d';
+      const d = new Date(now);
+      d.setMonth(d.getMonth() - 3);
+      period1 = d;
     } else if (range === '1y') {
       interval = '1wk';
       const d = new Date(now);
       d.setFullYear(d.getFullYear() - 1);
+      period1 = d;
+    } else if (range === 'all') {
+      interval = '1mo';
+      const d = new Date('2000-01-01');
       period1 = d;
     } else {
       // default: 1m
@@ -194,6 +208,9 @@ router.get('/:symbol/price', async (req, res) => {
       const d = new Date(date);
       if (range === '1d') {
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      }
+      if (range === 'all') {
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       }
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
