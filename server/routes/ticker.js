@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import yahooFinance from 'yahoo-finance2';
 import db from '../db.js';
 
 const router = Router();
@@ -148,104 +147,91 @@ router.get('/:symbol/metrics', async (req, res) => {
   }
 });
 
-// GET /:symbol/price - Get price history via Yahoo Finance (free, no API key)
-// Query param: ?range=1d|1w|1m|1y  (default: 1m)
+// GET /:symbol/price - Get price history via Yahoo Finance v8 API (free, no key)
+// Query param: ?range=1d|1w|1m|3m|1y|all  (default: 1m)
 router.get('/:symbol/price', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const range = req.query.range || '1m';
 
-    // Map range to Yahoo Finance interval and period
-    let interval, period1;
-    const now = new Date();
-    if (range === '1d') {
-      interval = '1h';
-      const d = new Date(now);
-      d.setDate(d.getDate() - 5); // go back 5 days to ensure we get a full trading day
-      period1 = d;
-    } else if (range === '1w') {
-      interval = '1d';
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      period1 = d;
-    } else if (range === '3m') {
-      interval = '1d';
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 3);
-      period1 = d;
-    } else if (range === '1y') {
-      interval = '1wk';
-      const d = new Date(now);
-      d.setFullYear(d.getFullYear() - 1);
-      period1 = d;
-    } else if (range === 'all') {
-      interval = '1mo';
-      const d = new Date('2000-01-01');
-      period1 = d;
-    } else {
-      // default: 1m
-      interval = '1d';
-      const d = new Date(now);
-      d.setDate(d.getDate() - 30);
-      period1 = d;
-    }
+    // Map our range keys to Yahoo Finance v8 API params
+    const rangeMap = {
+      '1d':  { yahooRange: '1d',  interval: '5m'  },
+      '1w':  { yahooRange: '5d',  interval: '1h'  },
+      '1m':  { yahooRange: '1mo', interval: '1d'  },
+      '3m':  { yahooRange: '3mo', interval: '1d'  },
+      '1y':  { yahooRange: '1y',  interval: '1wk' },
+      'all': { yahooRange: 'max', interval: '1mo' },
+    };
+    const { yahooRange, interval } = rangeMap[range] || rangeMap['1m'];
 
-    const result = await yahooFinance.chart(symbol, {
-      period1,
-      interval,
-    }, { validateResult: false });
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+      `?interval=${interval}&range=${yahooRange}&includePrePost=false`;
 
-    const quotes = result?.quotes || [];
-    const current = result?.meta?.regularMarketPrice || (quotes.length > 0 ? quotes[quotes.length - 1].close : null);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+    });
 
-    const fmtLabel = (date) => {
-      if (!date) return '';
-      const d = new Date(date);
-      if (range === '1d') {
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-      }
-      if (range === 'all') {
-        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      }
+    if (!response.ok) throw new Error(`Yahoo Finance responded ${response.status}`);
+
+    const data = await response.json();
+    const chart = data?.chart?.result?.[0];
+
+    if (!chart) return res.json({ current: null, history: [], rangeHigh: null, rangeLow: null });
+
+    const timestamps = chart.timestamp || [];
+    const quote = chart.indicators?.quote?.[0] || {};
+    const closes = quote.close || [];
+    const highs  = quote.high  || [];
+    const lows   = quote.low   || [];
+    const current = chart.meta?.regularMarketPrice ?? null;
+
+    const fmtLabel = (ts) => {
+      const d = new Date(ts * 1000);
+      if (range === '1d') return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      if (range === 'all') return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
-    const fmtDate = (date) => {
-      if (!date) return '';
-      return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
+    const fmtDate = (ts) =>
+      new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    // For 1d, only keep the most recent trading day's candles
-    let filteredQuotes = quotes.filter(q => q.close != null);
-    if (range === '1d' && filteredQuotes.length > 0) {
-      const lastDate = new Date(filteredQuotes[filteredQuotes.length - 1].date).toDateString();
-      filteredQuotes = filteredQuotes.filter(q => new Date(q.date).toDateString() === lastDate);
+    // Build valid points, filtering nulls
+    let points = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] != null) {
+        points.push({ ts: timestamps[i], close: closes[i], high: highs[i] ?? closes[i], low: lows[i] ?? closes[i] });
+      }
     }
 
-    const history = filteredQuotes.map(q => ({
-      date: fmtLabel(q.date),
-      price: parseFloat(q.close.toFixed(2)),
+    // For 1d, only keep the most recent trading day
+    if (range === '1d' && points.length > 0) {
+      const lastDay = new Date(points[points.length - 1].ts * 1000).toDateString();
+      points = points.filter(p => new Date(p.ts * 1000).toDateString() === lastDay);
+    }
+
+    const history = points.map(p => ({
+      date: fmtLabel(p.ts),
+      price: parseFloat(p.close.toFixed(2)),
     }));
 
-    // Compute range high/low
-    let rangeHigh = null;
-    let rangeLow = null;
-    if (filteredQuotes.length > 0) {
-      let maxPrice = -Infinity, maxDate = null;
-      let minPrice = Infinity,  minDate = null;
-      for (const q of filteredQuotes) {
-        const h = q.high ?? q.close;
-        const l = q.low  ?? q.close;
-        if (h > maxPrice) { maxPrice = h; maxDate = q.date; }
-        if (l < minPrice) { minPrice = l; minDate = q.date; }
+    let rangeHigh = null, rangeLow = null;
+    if (points.length > 0) {
+      let maxP = -Infinity, maxTs = null, minP = Infinity, minTs = null;
+      for (const p of points) {
+        if (p.high > maxP) { maxP = p.high; maxTs = p.ts; }
+        if (p.low  < minP) { minP = p.low;  minTs = p.ts; }
       }
-      rangeHigh = { price: parseFloat(maxPrice.toFixed(2)), date: fmtDate(maxDate) };
-      rangeLow  = { price: parseFloat(minPrice.toFixed(2)), date: fmtDate(minDate) };
+      rangeHigh = { price: parseFloat(maxP.toFixed(2)), date: fmtDate(maxTs) };
+      rangeLow  = { price: parseFloat(minP.toFixed(2)), date: fmtDate(minTs) };
     }
 
     res.json({ current, history, rangeHigh, rangeLow });
   } catch (err) {
-    console.error('Error fetching price from Yahoo Finance:', err.message);
+    console.error('Price fetch error:', err.message);
     res.json({ current: null, history: [], rangeHigh: null, rangeLow: null });
   }
 });
