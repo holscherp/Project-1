@@ -129,7 +129,7 @@ router.post('/analyze', requireAuth, async (req, res) => {
   }
   isAnalyzing = true;
   try {
-    const result = await runShlobTrader('manual');
+    const result = await runShlobTrader('manual', req.user.id);
     res.json(result);
   } catch (err) {
     console.error('[shlob-portfolio] analyze error:', err);

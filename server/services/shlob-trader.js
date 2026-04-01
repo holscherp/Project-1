@@ -161,8 +161,10 @@ let isRunning = false;
 
 /**
  * Full autonomous analysis cycle: gather context, call Claude, execute trades.
+ * userId scopes the tradeable universe to that user's watchlist + portfolio only.
+ * If no userId provided, falls back to the first user in the DB (for cron).
  */
-export async function runShlobTrader(triggeredBy = 'cron') {
+export async function runShlobTrader(triggeredBy = 'cron', userId = null) {
   if (isRunning) {
     console.log('[ShlobTrader] Already running, skipping');
     return { trades: [], skipped: true };
@@ -183,17 +185,32 @@ export async function runShlobTrader(triggeredBy = 'cron') {
     const portfolio = ensurePortfolioExists();
     const positions = db.prepare('SELECT * FROM shlob_positions').all();
 
-    // Gather tradeable universe: union of all users' watchlist + portfolio tickers
+    // Resolve userId — fall back to first user in DB (for cron runs)
+    let resolvedUserId = userId;
+    if (!resolvedUserId) {
+      const firstUser = db.prepare('SELECT id FROM users ORDER BY created_at ASC LIMIT 1').get();
+      if (!firstUser) {
+        db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
+        db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')
+          .run('completed', 'No users found — skipping', new Date().toISOString(), jobLogId);
+        return { trades: [], overall_notes: 'No users in DB.' };
+      }
+      resolvedUserId = firstUser.id;
+    }
+
+    // Gather tradeable universe: ONLY this user's watchlist + portfolio tickers
     const watchlistRows = db.prepare(`
       SELECT DISTINCT t.symbol, t.name, t.sector, t.market_cap_category
       FROM user_watchlist_tickers uwt
       JOIN tickers t ON t.symbol = uwt.ticker_symbol
-    `).all();
+      WHERE uwt.user_id = ?
+    `).all(resolvedUserId);
     const portfolioRows = db.prepare(`
       SELECT DISTINCT t.symbol, t.name, t.sector, t.market_cap_category
       FROM user_portfolio_positions upp
       JOIN tickers t ON t.symbol = upp.ticker_symbol
-    `).all();
+      WHERE upp.user_id = ?
+    `).all(resolvedUserId);
 
     const tickerMap = new Map();
     for (const t of [...watchlistRows, ...portfolioRows]) tickerMap.set(t.symbol, t);
