@@ -277,6 +277,16 @@ function initDb() {
       triggered_by TEXT NOT NULL DEFAULT 'cron',
       executed_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS shlob_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recorded_at TEXT NOT NULL,
+      total_value REAL NOT NULL,
+      cash_balance REAL NOT NULL,
+      positions_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_shlob_snapshots_time ON shlob_snapshots(recorded_at);
   `);
 
   // ── Seed Data ──────────────────────────────────────────────────────────

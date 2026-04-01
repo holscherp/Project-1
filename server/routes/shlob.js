@@ -2,7 +2,39 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { executeShlobTrade } from '../services/shlob-trader.js';
+import { executeShlobTrade, runShlobTrader } from '../services/shlob-trader.js';
+
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
+
+async function fetchLivePrice(symbol) {
+  if (FINNHUB_API_KEY) {
+    try {
+      const res = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (res.ok) {
+        const q = await res.json();
+        if (q.c && q.c > 0) return { price: q.c, change_pct: q.dp ?? null };
+      }
+    } catch {}
+  }
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(4000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const meta = data?.chart?.result?.[0]?.meta;
+      const price = meta?.regularMarketPrice;
+      const prevClose = meta?.previousClose || meta?.chartPreviousClose;
+      const change_pct = price && prevClose ? ((price - prevClose) / prevClose) * 100 : null;
+      if (price && price > 0) return { price, change_pct };
+    }
+  } catch {}
+  return { price: null, change_pct: null };
+}
 
 const router = Router();
 
@@ -216,6 +248,106 @@ Only include this block if you're making a genuine, conviction-backed trade. Do 
   } catch (err) {
     console.error('Error in Shlob:', err);
     res.status(500).json({ error: 'Shlob encountered an error processing your question.' });
+  }
+});
+
+// POST /analyze — Trigger Shlob's autonomous trade cycle manually
+router.post('/analyze', requireAuth, async (req, res) => {
+  try {
+    const result = await runShlobTrader('manual', req.user.id);
+    res.json(result);
+  } catch (err) {
+    console.error('Error running Shlob analysis:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /portfolio — Shlob's portfolio: positions, total value, recent trades
+router.get('/portfolio', requireAuth, async (req, res) => {
+  try {
+    const portfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+    if (!portfolio) {
+      return res.json({ portfolio: null, positions: [], trades: [], total_value: 0 });
+    }
+
+    const positions = db.prepare('SELECT * FROM shlob_positions ORDER BY opened_at ASC').all();
+
+    // Fetch live prices for all positions in parallel
+    const priceResults = await Promise.all(positions.map(p => fetchLivePrice(p.ticker_symbol)));
+
+    let equityValue = 0;
+    const enrichedPositions = positions.map((p, i) => {
+      const { price, change_pct } = priceResults[i];
+      const currentPrice = price;
+      const shares = Math.abs(p.shares);
+
+      let positionValue = null;
+      let unrealizedPnl = null;
+      let unrealizedPnlPct = null;
+
+      if (currentPrice != null) {
+        if (p.position_type === 'long') {
+          positionValue = currentPrice * shares;
+          unrealizedPnl = (currentPrice - p.avg_cost_per_share) * shares;
+          unrealizedPnlPct = ((currentPrice - p.avg_cost_per_share) / p.avg_cost_per_share) * 100;
+          equityValue += positionValue;
+        } else {
+          // Short: P&L = (avg_cost - current) * shares; equity contribution = 2*cost*shares - current*shares
+          positionValue = (2 * p.avg_cost_per_share - currentPrice) * shares;
+          unrealizedPnl = (p.avg_cost_per_share - currentPrice) * shares;
+          unrealizedPnlPct = ((p.avg_cost_per_share - currentPrice) / p.avg_cost_per_share) * 100;
+          equityValue += positionValue;
+        }
+      }
+
+      // Resolve ticker name from tickers table if available
+      const ticker = db.prepare('SELECT name, sector FROM tickers WHERE symbol = ?').get(p.ticker_symbol);
+
+      return {
+        symbol: p.ticker_symbol,
+        name: ticker?.name ?? p.ticker_symbol,
+        sector: ticker?.sector ?? null,
+        position_type: p.position_type,
+        shares,
+        avg_cost_per_share: p.avg_cost_per_share,
+        current_price: currentPrice,
+        change_pct,
+        position_value: positionValue,
+        unrealized_pnl: unrealizedPnl,
+        unrealized_pnl_pct: unrealizedPnlPct,
+        opened_at: p.opened_at,
+      };
+    });
+
+    const totalValue = portfolio.cash_balance + equityValue;
+
+    // Attach allocation %
+    const withAllocation = enrichedPositions.map(p => ({
+      ...p,
+      allocation_pct: totalValue > 0 && p.position_value != null
+        ? (p.position_value / totalValue) * 100
+        : null,
+    }));
+
+    const trades = db.prepare(
+      'SELECT * FROM shlob_trades ORDER BY executed_at DESC LIMIT 30'
+    ).all();
+
+    res.json({
+      portfolio: {
+        cash_balance: portfolio.cash_balance,
+        starting_capital: portfolio.starting_capital,
+        total_value: totalValue,
+        total_pnl: totalValue - portfolio.starting_capital,
+        total_pnl_pct: ((totalValue - portfolio.starting_capital) / portfolio.starting_capital) * 100,
+        last_analysis_at: portfolio.last_analysis_at,
+      },
+      positions: withAllocation,
+      trades,
+    });
+  } catch (err) {
+    console.error('Error fetching Shlob portfolio:', err);
+    res.status(500).json({ error: 'Failed to fetch Shlob portfolio' });
   }
 });
 

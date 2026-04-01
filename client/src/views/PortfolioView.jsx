@@ -49,8 +49,8 @@ function PriceChart({ symbol, dark }) {
 
   const muted = dark ? 'text-slate-500' : 'text-slate-400';
   const history = chartData?.history || [];
-  const yearHigh = chartData?.yearHigh;
-  const yearLow = chartData?.yearLow;
+  const yearHigh = chartData?.rangeHigh;
+  const yearLow = chartData?.rangeLow;
 
   const isPositive = history.length > 1 &&
     history[history.length - 1].price >= history[0].price;
@@ -358,11 +358,9 @@ function PositionCard({ position, totalValue, dark, onRemove, onEdit }) {
   );
 }
 
-// ── Main View ─────────────────────────────────────────────────────────────────
+// ── My Portfolio sub-tab ──────────────────────────────────────────────────────
 
-export default function PortfolioView() {
-  const { theme } = useTheme();
-  const dark = theme === 'dark';
+function MyPortfolio({ dark }) {
   const { data, loading, error, refetch } = useApi('/api/portfolio');
 
   const [tickerInput, setTickerInput] = useState('');
@@ -443,13 +441,8 @@ export default function PortfolioView() {
   };
 
   return (
-    <div className="space-y-8">
-      <h1 className={`text-sm font-bold uppercase tracking-wider ${heading}`}>Portfolio</h1>
-
-      {/* ── Shlob's Autonomous Portfolio ── */}
-      <ShlobPortfolio />
-
-      {/* ── Summary card ── */}
+    <div className="space-y-6">
+      {/* Summary card */}
       <section className={`rounded-lg border p-6 ${cardBg}`}>
         <div className="flex flex-wrap items-end gap-6">
           <div>
@@ -475,7 +468,7 @@ export default function PortfolioView() {
               </div>
             </div>
           )}
-          <div className={`ml-auto text-right`}>
+          <div className="ml-auto text-right">
             <div className={`text-[10px] font-semibold uppercase tracking-wider mb-1 ${muted}`}>
               Positions
             </div>
@@ -484,7 +477,7 @@ export default function PortfolioView() {
         </div>
       </section>
 
-      {/* ── Add position form ── */}
+      {/* Add position form */}
       <section className={`rounded-lg border p-6 ${cardBg}`}>
         <h2 className={`text-[10px] font-semibold uppercase tracking-wider mb-4 ${muted}`}>
           Add Position
@@ -542,7 +535,7 @@ export default function PortfolioView() {
         </form>
       </section>
 
-      {/* ── Positions list ── */}
+      {/* Positions list */}
       {positions.length === 0 ? (
         <div className={`text-center py-16 text-sm ${muted}`}>
           No positions yet. Add your first stock above.
@@ -561,6 +554,49 @@ export default function PortfolioView() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Main View ─────────────────────────────────────────────────────────────────
+
+export default function PortfolioView() {
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const [activeTab, setActiveTab] = useState('shlob');
+
+  const heading = dark ? 'text-slate-100' : 'text-slate-900';
+  const muted = dark ? 'text-slate-500' : 'text-slate-400';
+
+  const TABS = [
+    { key: 'shlob', label: "Shlob's Portfolio" },
+    { key: 'mine',  label: 'My Portfolio' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header + sub-tab bar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className={`text-sm font-bold uppercase tracking-wider ${heading}`}>Portfolio</h1>
+        <div className={`flex gap-0.5 p-0.5 rounded-lg ${dark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                activeTab === t.key
+                  ? dark ? 'bg-slate-600 text-white' : 'bg-white text-slate-900 shadow-sm'
+                  : dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === 'shlob' && <ShlobPortfolio />}
+      {activeTab === 'mine'  && <MyPortfolio dark={dark} />}
     </div>
   );
 }

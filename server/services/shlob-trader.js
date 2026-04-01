@@ -11,17 +11,31 @@ try {
 }
 
 async function fetchQuote(symbol) {
-  if (!FINNHUB_API_KEY) return null;
+  // Try Finnhub first if key is available
+  if (FINNHUB_API_KEY) {
+    try {
+      const res = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`
+      );
+      if (res.ok) {
+        const q = await res.json();
+        if (q.c && q.c > 0) return q.c;
+      }
+    } catch {}
+  }
+  // Fallback: Yahoo Finance v8 API (free, no key)
   try {
     const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
     );
-    if (!res.ok) return null;
-    const q = await res.json();
-    return q.c || null;
-  } catch {
-    return null;
-  }
+    if (res.ok) {
+      const data = await res.json();
+      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      if (price && price > 0) return price;
+    }
+  } catch {}
+  return null;
 }
 
 function ensurePortfolioExists() {
@@ -335,9 +349,14 @@ TRADING RULES:
 - Never exceed your cash balance for buys or shorts (shorts require full notional as collateral)
 - Never sell more shares than you own; never cover more than you're short
 - Max single position: $${maxPositionValue.toFixed(0)} (30% of portfolio) — do not exceed this
-- Be selective. Only trade when data clearly supports it. Do not overtrade.
 - Reference specific news, filings, or price levels in your reasoning
-- You can decide to do nothing (empty decisions array) if no clear opportunity exists
+
+FULLY INVESTED MANDATE — THIS IS NON-NEGOTIABLE:
+- All $${portfolio.starting_capital.toFixed(0)} must be deployed at all times. You are not allowed to hold more than $500 in idle cash.
+- If your current cash_balance > $500, you MUST include buy decisions in this cycle to invest every dollar above $500.
+- If you want to open a new position but lack sufficient cash, you MUST first sell (or partially sell) an existing position to free the capital. Place the sell decision BEFORE the buy in your decisions array.
+- When choosing which position to sell to fund a new buy, analyze your holdings and pick the weakest one: lowest conviction, most overvalued, weakest near-term catalyst, or highest downside risk. Your sell reasoning MUST specifically explain why that holding is the worst to keep right now.
+- "I'll wait for a better entry" is not an acceptable reason to leave cash idle. Deploy it.
 
 CRITICAL: Return ONLY valid JSON. Your entire response must be parseable JSON. No prose before or after.
 
@@ -354,7 +373,7 @@ Required format:
   "overall_notes": "<1-2 sentence portfolio assessment>"
 }
 
-If no trades are warranted: {"decisions": [], "overall_notes": "<your assessment>"}`;
+If portfolio is already fully invested and no better opportunities exist: {"decisions": [], "overall_notes": "<your assessment>"}`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -416,6 +435,25 @@ If no trades are warranted: {"decisions": [], "overall_notes": "<your assessment
     }
 
     db.prepare('UPDATE shlob_portfolio SET last_analysis_at = ? WHERE id = 1').run(new Date().toISOString());
+
+    // Write portfolio snapshot using the live prices already fetched this cycle
+    const freshPortfolio = db.prepare('SELECT * FROM shlob_portfolio WHERE id = 1').get();
+    const freshPositions = db.prepare('SELECT * FROM shlob_positions').all();
+    let snapshotTotalValue = freshPortfolio.cash_balance;
+    const positionsSnapshot = freshPositions.map(p => {
+      const cp = prices[p.ticker_symbol];
+      let posVal = p.avg_cost_per_share * Math.abs(p.shares); // fallback to cost
+      if (cp) {
+        posVal = p.position_type === 'long'
+          ? cp * p.shares
+          : (2 * p.avg_cost_per_share - cp) * Math.abs(p.shares);
+      }
+      snapshotTotalValue += posVal;
+      return { ticker: p.ticker_symbol, value: parseFloat(posVal.toFixed(2)), price: cp || p.avg_cost_per_share, shares: Math.abs(p.shares), position_type: p.position_type };
+    });
+    db.prepare(
+      'INSERT INTO shlob_snapshots (recorded_at, total_value, cash_balance, positions_json) VALUES (?, ?, ?, ?)'
+    ).run(new Date().toISOString(), parseFloat(snapshotTotalValue.toFixed(2)), freshPortfolio.cash_balance, JSON.stringify(positionsSnapshot));
 
     const summary = `${executedTrades.length} trades executed, ${skippedTrades.length} skipped. ${overallNotes}`;
     db.prepare('UPDATE job_log SET status = ?, message = ?, completed_at = ? WHERE id = ?')

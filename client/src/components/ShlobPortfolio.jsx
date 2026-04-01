@@ -138,8 +138,8 @@ function PositionRow({ pos, dark }) {
   return (
     <tr className={`border-t ${rowBorder}`}>
       <td className={`py-2.5 px-3 text-xs font-mono font-bold ${heading}`}>
-        {pos.ticker_symbol}
-        {pos.name && pos.name !== pos.ticker_symbol && (
+        {pos.symbol}
+        {pos.name && pos.name !== pos.symbol && (
           <div className={`text-[10px] font-normal ${muted}`}>{pos.name}</div>
         )}
       </td>
@@ -174,7 +174,7 @@ function PositionRow({ pos, dark }) {
 export default function ShlobPortfolio() {
   const { theme } = useTheme();
   const dark = theme === 'dark';
-  const { data, loading, error, refetch } = useApi('/api/shlob-portfolio');
+  const { data, loading, error, refetch } = useApi('/api/shlob/portfolio');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
@@ -190,7 +190,7 @@ export default function ShlobPortfolio() {
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const res = await fetch('/api/shlob-portfolio/analyze', {
+      const res = await fetch('/api/shlob/analyze', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -222,9 +222,9 @@ export default function ShlobPortfolio() {
     );
   }
 
-  const { portfolio, positions = [], recent_trades = [] } = data || {};
+  const { portfolio, positions = [], trades = [] } = data || {};
   const pnlPositive = portfolio?.total_pnl >= 0;
-  const tradesToShow = showAllTrades ? recent_trades : recent_trades.slice(0, 20);
+  const tradesToShow = showAllTrades ? trades : trades.slice(0, 20);
 
   return (
     <div className="space-y-5">
@@ -338,7 +338,7 @@ export default function ShlobPortfolio() {
               </thead>
               <tbody>
                 {positions.map(p => (
-                  <PositionRow key={p.ticker_symbol} pos={p} dark={dark} />
+                  <PositionRow key={p.symbol} pos={p} dark={dark} />
                 ))}
               </tbody>
             </table>
@@ -350,14 +350,14 @@ export default function ShlobPortfolio() {
       <div className={`rounded-lg border overflow-hidden ${cardBg}`}>
         <div className={`px-5 py-3 border-b flex items-center justify-between ${dark ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <h3 className={`text-[10px] font-semibold uppercase tracking-wider ${muted}`}>
-            Trade Log ({recent_trades.length} total)
+            Trade Log ({trades.length} total)
           </h3>
-          {recent_trades.length === 0 && (
+          {trades.length === 0 && (
             <span className={`text-[11px] ${muted}`}>No trades yet — trigger an analysis above</span>
           )}
         </div>
 
-        {recent_trades.length > 0 && (
+        {trades.length > 0 && (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -374,20 +374,20 @@ export default function ShlobPortfolio() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tradesToShow.map(t => (
-                    <TradeRow key={t.id} trade={t} dark={dark} />
+                  {tradesToShow.map((t, i) => (
+                    <TradeRow key={t.id ?? i} trade={t} dark={dark} />
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {recent_trades.length > 20 && (
+            {trades.length > 20 && (
               <div className={`px-5 py-3 border-t text-center ${dark ? 'border-slate-700/40' : 'border-slate-100'}`}>
                 <button
                   onClick={() => setShowAllTrades(v => !v)}
-                  className={`text-xs font-medium ${subheading} hover:${dark ? 'text-slate-200' : 'text-slate-900'} transition-colors`}
+                  className={`text-xs font-medium ${dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-900'} transition-colors`}
                 >
-                  {showAllTrades ? 'Show less' : `Show all ${recent_trades.length} trades`}
+                  {showAllTrades ? 'Show less' : `Show all ${trades.length} trades`}
                 </button>
               </div>
             )}
