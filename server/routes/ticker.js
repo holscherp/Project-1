@@ -3,11 +3,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import yahooFinance from 'yahoo-finance2';
 import db from '../db.js';
 
-// Suppress yahoo-finance2 validation noise — v3+ throws by default on minor schema drift
-yahooFinance.setGlobalConfig({
-  validation: { logErrors: false, logOptionsErrors: false },
-});
-
 const router = Router();
 
 let anthropic;
@@ -198,7 +193,7 @@ router.get('/:symbol/price', async (req, res) => {
     const result = await yahooFinance.chart(symbol, {
       period1,
       interval,
-    });
+    }, { validateResult: false });
 
     const quotes = result?.quotes || [];
     const current = result?.meta?.regularMarketPrice || (quotes.length > 0 ? quotes[quotes.length - 1].close : null);
